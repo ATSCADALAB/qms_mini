@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
-
+import '../../widgets/config_summary_card.dart';
 import '../../services/config_service.dart';
 import '../../services/database_service.dart';
 import '../../models/queue_item.dart';
@@ -111,7 +111,7 @@ class _PrintScreenState extends State<PrintScreen> with TickerProviderStateMixin
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Lỗi tải dữ liệu: $e'),
-            backgroundColor: Colors.red,
+            backgroundColor: Colors.blueGrey[900],
           ),
         );
       }

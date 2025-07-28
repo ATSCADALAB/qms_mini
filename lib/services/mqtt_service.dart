@@ -1,17 +1,16 @@
-// lib/services/mqtt_service.dart
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
-import 'package:mqtt_client/mqtt_client.dart';
+import 'package:mqtt_client/mqtt_client.dart' as mqtt; // Giữ nguyên tiền tố
 import 'package:mqtt_client/mqtt_server_client.dart';
 
 import '../models/device_config.dart';
-import '../models/mqtt_message.dart';
+import '../models/mqtt_message.dart'; // MqttMessage của chúng ta không cần tiền tố
 import '../models/queue_item.dart';
 import '../utils/constants.dart';
 import '../utils/helpers.dart';
 
+// Enum này là của chúng ta, không bị ảnh hưởng
 enum MqttConnectionState {
   disconnected,
   connecting,
@@ -35,7 +34,6 @@ class MqttService extends ChangeNotifier {
   int _reconnectAttempts = 0;
   static const int _maxReconnectAttempts = 5;
 
-  // Stream controllers for different message types
   final StreamController<MqttMessage> _messageController =
   StreamController<MqttMessage>.broadcast();
   final StreamController<QueueItem> _queueUpdateController =
@@ -65,56 +63,52 @@ class MqttService extends ChangeNotifier {
     try {
       _setConnectionState(MqttConnectionState.connecting);
 
-      // Create client with unique identifier
-      final clientId = '${config.deviceType}_${config.storeId}_${AppHelpers.generateRandomString(4)}';
+      final clientId =
+          '${config.deviceType}_${config.storeId}_${AppHelpers.generateRandomString(4)}';
       _client = MqttServerClient(config.mqttBroker, clientId);
 
-      // Configure client
       _client!.port = config.mqttPort;
       _client!.keepAlivePeriod = AppConstants.mqttKeepAlive;
       _client!.connectTimeoutPeriod = AppConstants.mqttConnectTimeout * 1000;
-      _client!.autoReconnect = false; // We'll handle reconnection manually
+      _client!.autoReconnect = false;
       _client!.logging(on: kDebugMode);
 
-      // Set up callbacks
       _client!.onConnected = _onConnected;
       _client!.onDisconnected = _onDisconnected;
       _client!.onSubscribed = _onSubscribed;
       _client!.onSubscribeFail = _onSubscribeFail;
       _client!.onUnsubscribed = _onUnsubscribed;
 
-      // Create connection message
-      final connMessage = MqttConnectMessage()
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.`
+      final connMessage = mqtt.MqttConnectMessage()
           .withClientIdentifier(clientId)
           .startClean()
-          .withWillQos(MqttQos.atLeastOnce)
+          .withWillQos(mqtt.MqttQos.atLeastOnce)
           .withWillMessage('Device disconnected unexpectedly')
-          .withWillTopic('device/${config.storeId}/${config.deviceType}/status');
+          .withWillTopic(
+          'device/${config.storeId}/${config.deviceType}/status');
 
-      // Add authentication if provided
       if (config.mqttUsername.isNotEmpty) {
         connMessage.authenticateAs(config.mqttUsername, config.mqttPassword);
       }
 
       _client!.connectionMessage = connMessage;
 
-      // Connect
       await _client!.connect();
 
-      if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.` để so sánh đúng enum của thư viện
+      if (_client!.connectionStatus!.state == mqtt.MqttConnectionState.connected) {
         _setConnectionState(MqttConnectionState.connected);
         _setupMessageListener();
         _subscribeToTopics();
         _startHeartbeat();
         _reconnectAttempts = 0;
-
         AppHelpers.logDebug('MQTT connected successfully', tag: 'MQTT');
         return true;
       }
 
       _setConnectionState(MqttConnectionState.error);
       return false;
-
     } catch (e) {
       _lastError = e.toString();
       _setConnectionState(MqttConnectionState.error);
@@ -129,8 +123,8 @@ class MqttService extends ChangeNotifier {
       _stopHeartbeat();
       _stopReconnectTimer();
 
-      if (_client?.connectionStatus?.state == MqttConnectionState.connected) {
-        // Send offline status before disconnecting
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.`
+      if (_client?.connectionStatus?.state == mqtt.MqttConnectionState.connected) {
         await _publishDeviceStatus('offline');
         _client!.disconnect();
       }
@@ -145,16 +139,15 @@ class MqttService extends ChangeNotifier {
   // Publish queue item addition
   Future<bool> publishQueueAdd(QueueItem queueItem) async {
     if (!isConnected || _config == null) return false;
-
     try {
+      // Dùng MqttMessage của chúng ta, không cần tiền tố
       final message = MqttMessage.queueAdd(
         storeId: _config!.storeId,
         number: queueItem.number,
         prefix: queueItem.prefix,
+        // priority: queueItem.priority, // Giả sử model MqttMessage có trường này
         operator: queueItem.operator,
-        notes: queueItem.notes,
       );
-
       return await _publishMessage(message.topic, message.rawPayload);
     } catch (e) {
       AppHelpers.logError('Failed to publish queue add', e);
@@ -165,15 +158,11 @@ class MqttService extends ChangeNotifier {
   // Publish device heartbeat
   Future<bool> publishHeartbeat(Map<String, dynamic> deviceInfo) async {
     if (!isConnected || _config == null) return false;
-
     try {
       final message = MqttMessage.deviceHeartbeat(
-        storeId: _config!.storeId,
-        deviceType: _config!.deviceType,
-        deviceName: _config!.deviceName,
-        status: deviceInfo,
-      );
-
+          storeId: _config!.storeId,
+          deviceType: _config!.deviceType,
+          statusData: deviceInfo);
       return await _publishMessage(message.topic, message.rawPayload);
     } catch (e) {
       AppHelpers.logError('Failed to publish heartbeat', e);
@@ -200,11 +189,13 @@ class MqttService extends ChangeNotifier {
     }
   }
 
+
   // Publish device status
   Future<bool> _publishDeviceStatus(String status) async {
     if (_config == null) return false;
 
     try {
+      // Giả sử DeviceConfig có hàm getTopic
       final topic = _config!.getTopic('device_status');
       final payload = {
         'device_type': _config!.deviceType,
@@ -222,16 +213,20 @@ class MqttService extends ChangeNotifier {
   }
 
   // Generic message publishing
-  Future<bool> _publishMessage(String topic, String payload, {MqttQos qos = MqttQos.atLeastOnce}) async {
+  Future<bool> _publishMessage(String topic, String payload,
+      {mqtt.MqttQos qos = mqtt.MqttQos.atLeastOnce}) async { // ĐÃ SỬA
     if (!isConnected || _client == null) return false;
 
     try {
-      final builder = MqttClientPayloadBuilder();
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.`
+      final builder = mqtt.MqttClientPayloadBuilder();
       builder.addString(payload);
 
       _client!.publishMessage(topic, qos, builder.payload!);
 
-      AppHelpers.logDebug('Published to $topic: ${AppHelpers.truncateText(payload, 100)}', tag: 'MQTT');
+      AppHelpers.logDebug(
+          'Published to $topic: ${AppHelpers.truncateText(payload, 100)}',
+          tag: 'MQTT');
       return true;
     } catch (e) {
       AppHelpers.logError('Failed to publish message to $topic', e);
@@ -242,7 +237,8 @@ class MqttService extends ChangeNotifier {
   // Set up message listener
   void _setupMessageListener() {
     _client!.updates!.listen(
-          (List<MqttReceivedMessage<MqttMessage>> messages) {
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.` vào cả hai
+          (List<mqtt.MqttReceivedMessage<mqtt.MqttMessage>> messages) {
         for (final mqttMessage in messages) {
           _handleIncomingMessage(mqttMessage);
         }
@@ -254,26 +250,23 @@ class MqttService extends ChangeNotifier {
   }
 
   // Handle incoming MQTT messages
-  void _handleIncomingMessage(MqttReceivedMessage<MqttMessage> mqttMessage) {
+  void _handleIncomingMessage(mqtt.MqttReceivedMessage<mqtt.MqttMessage> mqttMessage) { // ĐÃ SỬA
     try {
       final topic = mqttMessage.topic;
-      final payload = MqttPublishPayload.bytesToStringAsString(
-          (mqttMessage.payload as MqttPublishMessage).payload.message
-      );
+      // ĐÃ SỬA: Thêm tiền tố `mqtt.`
+      final payload = mqtt.MqttPublishPayload.bytesToStringAsString(
+          (mqttMessage.payload as mqtt.MqttPublishMessage).payload.message);
 
-      final message = MqttMessage.fromMqtt(topic: topic, payload: payload);
+      // Dùng MqttMessage của chúng ta
+      final message = MqttMessage.fromMqtt(topic, payload);
 
-      // Validate message is for our store
       if (!message.isForStore(_config!.storeId)) {
         return;
       }
 
       AppHelpers.logDebug('Received: ${message.summary}', tag: 'MQTT');
 
-      // Emit to main message stream
       _messageController.add(message);
-
-      // Route to specific streams based on message type
       _routeMessage(message);
 
     } catch (e) {
@@ -308,7 +301,6 @@ class MqttService extends ChangeNotifier {
           break;
 
         default:
-        // Handle other message types as needed
           break;
       }
     } catch (e) {
@@ -319,8 +311,8 @@ class MqttService extends ChangeNotifier {
   // Handle queue update messages
   void _handleQueueUpdate(MqttMessage message) {
     try {
-      // Convert MQTT message to QueueItem if possible
-      if (message.payload.containsKey('number') && message.payload.containsKey('prefix')) {
+      if (message.payload.containsKey('number') &&
+          message.payload.containsKey('prefix')) {
         final queueItem = QueueItem.fromMqttPayload(message.payload);
         _queueUpdateController.add(queueItem);
       }
@@ -368,7 +360,6 @@ class MqttService extends ChangeNotifier {
   // Handle config update messages
   void _handleConfigUpdate(MqttMessage message) {
     try {
-      // Emit config updates for the application to handle
       _systemStatusController.add({
         'type': 'config_update',
         'config': message.payload,
@@ -394,7 +385,7 @@ class MqttService extends ChangeNotifier {
 
     for (final topic in topics) {
       if (topic.isNotEmpty) {
-        _client!.subscribe(topic, MqttQos.atLeastOnce);
+        _client!.subscribe(topic, mqtt.MqttQos.atLeastOnce); // ĐÃ SỬA
         AppHelpers.logDebug('Subscribed to: $topic', tag: 'MQTT');
       }
     }
@@ -418,7 +409,6 @@ class MqttService extends ChangeNotifier {
   // Send heartbeat
   Future<void> _sendHeartbeat() async {
     if (!isConnected || _config == null) return;
-
     try {
       final deviceInfo = {
         'last_seen': AppHelpers.getCurrentDateTime(),
@@ -426,7 +416,6 @@ class MqttService extends ChangeNotifier {
         'app_version': AppConstants.appVersion,
         'uptime': DateTime.now().millisecondsSinceEpoch,
       };
-
       await publishHeartbeat(deviceInfo);
     } catch (e) {
       AppHelpers.logError('Heartbeat failed', e);
@@ -443,8 +432,11 @@ class MqttService extends ChangeNotifier {
       return;
     }
 
-    final delay = Duration(seconds: AppConstants.mqttReconnectDelay * (_reconnectAttempts + 1));
-    AppHelpers.logDebug('Reconnecting in ${delay.inSeconds} seconds (attempt ${_reconnectAttempts + 1})', tag: 'MQTT');
+    final delay = Duration(
+        seconds: AppConstants.mqttReconnectDelay * (_reconnectAttempts + 1));
+    AppHelpers.logDebug(
+        'Reconnecting in ${delay.inSeconds} seconds (attempt ${_reconnectAttempts + 1})',
+        tag: 'MQTT');
 
     _reconnectTimer = Timer(delay, () {
       _reconnectAttempts++;
@@ -476,7 +468,9 @@ class MqttService extends ChangeNotifier {
     if (_connectionState != state) {
       _connectionState = state;
       notifyListeners();
-      AppHelpers.logDebug('Connection state: ${state.toString().split('.').last}', tag: 'MQTT');
+      AppHelpers.logDebug(
+          'Connection state: ${state.toString().split('.').last}',
+          tag: 'MQTT');
     }
   }
 
@@ -521,7 +515,7 @@ class MqttService extends ChangeNotifier {
       testClient.connectTimeoutPeriod = timeoutSeconds * 1000;
       testClient.logging(on: false);
 
-      final connMessage = MqttConnectMessage()
+      final connMessage = mqtt.MqttConnectMessage() // ĐÃ SỬA
           .withClientIdentifier(testClient.clientIdentifier)
           .startClean();
 
@@ -533,7 +527,8 @@ class MqttService extends ChangeNotifier {
 
       await testClient.connect();
 
-      final isConnected = testClient.connectionStatus?.state == MqttConnectionState.connected;
+      final isConnected = // ĐÃ SỬA
+      testClient.connectionStatus?.state == mqtt.MqttConnectionState.connected;
 
       if (isConnected) {
         testClient.disconnect();

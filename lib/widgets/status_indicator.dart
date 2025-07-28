@@ -1,4 +1,3 @@
-// lib/widgets/status_indicator.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -10,18 +9,18 @@ class StatusIndicator extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
 
   const StatusIndicator({
-    Key? key,
+    super.key,
     required this.label,
     required this.status,
     this.icon,
     this.showIcon = true,
     this.padding,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
-    Color color = _getStatusColor();
-    IconData statusIcon = _getStatusIcon();
+    Color color = _getStatusColor(status);
+    IconData statusIcon = _getStatusIcon(status);
 
     return Padding(
       padding: padding ?? EdgeInsets.symmetric(vertical: 8.h),
@@ -75,8 +74,8 @@ class StatusIndicator extends StatelessWidget {
     );
   }
 
-  Color _getStatusColor() {
-    switch (status.toUpperCase()) {
+  Color _getStatusColor(String currentStatus) {
+    switch (currentStatus.toUpperCase()) {
       case 'OK':
       case 'ĐÃ LƯU':
       case 'CONNECTED':
@@ -102,8 +101,8 @@ class StatusIndicator extends StatelessWidget {
     }
   }
 
-  IconData _getStatusIcon() {
-    switch (status.toUpperCase()) {
+  IconData _getStatusIcon(String currentStatus) {
+    switch (currentStatus.toUpperCase()) {
       case 'OK':
       case 'ĐÃ LƯU':
       case 'CONNECTED':
@@ -130,18 +129,19 @@ class StatusIndicator extends StatelessWidget {
   }
 }
 
-// Specialized status indicators
+//--- Các widget chuyên biệt có thể đặt cùng file hoặc tách riêng ---//
+
 class ConnectionStatusIndicator extends StatelessWidget {
   final bool isConnected;
   final String? customText;
   final VoidCallback? onTap;
 
   const ConnectionStatusIndicator({
-    Key? key,
+    super.key,
     required this.isConnected,
     this.customText,
     this.onTap,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -161,10 +161,10 @@ class PrinterStatusIndicator extends StatelessWidget {
   final VoidCallback? onTest;
 
   const PrinterStatusIndicator({
-    Key? key,
+    super.key,
     required this.status,
     this.onTest,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -184,10 +184,10 @@ class ConfigStatusIndicator extends StatelessWidget {
   final VoidCallback? onConfigure;
 
   const ConfigStatusIndicator({
-    Key? key,
+    super.key,
     required this.isConfigured,
     this.onConfigure,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -201,282 +201,3 @@ class ConfigStatusIndicator extends StatelessWidget {
     );
   }
 }
-case 'ĐÃ LƯU':
-case 'CONNECTED':
-return Colors.green;
-case 'ERROR':
-case 'FAILED':
-case 'DISCONNECTED':
-return Colors.red;
-case 'ĐANG TEST...':
-case 'CONNECTING...':
-case 'LOADING...':
-return Colors.orange;
-case 'CHƯA TEST':
-case 'CHƯA LƯU':
-case 'NOT SET':
-return Colors.grey;
-default:
-return Colors.blue;
-}
-}
-
-IconData _getStatusIcon() {
-  switch (status.toUpperCase()) {
-    case 'OK':
-    case 'ĐÃ LƯU':
-    case 'CONNECTED':
-      return Icons.check_circle;
-    case 'ERROR':
-    case 'FAILED':
-    case 'DISCONNECTED':
-      return Icons.error;
-    case 'ĐANG TEST...':
-    case 'CONNECTING...':
-    case 'LOADING...':
-      return Icons.refresh;
-    case 'CHƯA TEST':
-    case 'CHƯA LƯU':
-    case 'NOT SET':
-      return Icons.help_outline;
-    default:
-      return Icons.info_outline;
-  }
-}
-}
-
-// lib/widgets/config_summary_card.dart
-class ConfigSummaryCard extends StatelessWidget {
-  final String title;
-  final Map<String, String> items;
-  final VoidCallback? onEdit;
-
-  const ConfigSummaryCard({
-    Key? key,
-    required this.title,
-    required this.items,
-    this.onEdit,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[700],
-                  ),
-                ),
-                if (onEdit != null)
-                  IconButton(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit),
-                    color: Colors.blue[700],
-                  ),
-              ],
-            ),
-            SizedBox(height: 12.h),
-            ...items.entries.map((entry) => _buildSummaryRow(entry.key, entry.value)),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// lib/widgets/connection_test_card.dart
-class ConnectionTestCard extends StatefulWidget {
-  final String title;
-  final IconData icon;
-  final Future<bool> Function() testFunction;
-  final String successMessage;
-  final String errorMessage;
-
-  const ConnectionTestCard({
-    Key? key,
-    required this.title,
-    required this.icon,
-    required this.testFunction,
-    required this.successMessage,
-    required this.errorMessage,
-  }) : super(key: key);
-
-  @override
-  State<ConnectionTestCard> createState() => _ConnectionTestCardState();
-}
-
-class _ConnectionTestCardState extends State<ConnectionTestCard> {
-  String _status = 'CHƯA TEST';
-  bool _isTesting = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(widget.icon, color: Colors.blue[700]),
-                SizedBox(width: 8.w),
-                Text(
-                  widget.title,
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.blue[700],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16.h),
-            StatusIndicator(label: 'Trạng thái', status: _status),
-            SizedBox(height: 16.h),
-            ActionButton(
-              text: 'TEST KẾT NỐI',
-              icon: Icons.wifi_find,
-              backgroundColor: Colors.orange,
-              isLoading: _isTesting,
-              onPressed: _testConnection,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _testConnection() async {
-    setState(() {
-      _isTesting = true;
-      _status = 'ĐANG TEST...';
-    });
-
-    try {
-      final result = await widget.testFunction();
-      setState(() {
-        _status = result ? 'OK' : 'ERROR';
-        _isTesting = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result ? widget.successMessage : widget.errorMessage),
-            backgroundColor: result ? Colors.green : Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      setState(() {
-        _status = 'ERROR';
-        _isTesting = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${widget.errorMessage}: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-}
-
-Widget _buildSummaryRow(String label, String value) {
-  return Padding(
-    padding: EdgeInsets.symmetric(vertical: 4.h),
-    child: Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 100.w,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontWeight: FontWeight.w500,
-              fontSize: 13.sp,
-              color: Colors.grey[700],
-            ),
-          ),
-        ),
-        Expanded(
-          child: Text(
-            value.isEmpty ? '(chưa cấu hình)' : value,
-            style: TextStyle(
-              color: value.isEmpty ? Colors.red : Colors.black87,
-              fontSize: 13.sp,
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
-}
-}
-
-// lib/widgets/action_button.dart
-class ActionButton extends StatelessWidget {
-  final String text;
-  final IconData icon;
-  final VoidCallback? onPressed;
-  final Color? backgroundColor;
-  final Color? textColor;
-  final bool isLoading;
-  final bool isEnabled;
-
-  const ActionButton({
-    Key? key,
-    required this.text,
-    required this.icon,
-    this.onPressed,
-    this.backgroundColor,
-    this.textColor,
-    this.isLoading = false,
-    this.isEnabled = true,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: isEnabled && !isLoading ? onPressed : null,
-        icon: isLoading
-            ? SizedBox(
-          width: 20.w,
-          height: 20.h,
-          child: const CircularProgressIndicator(
-            strokeWidth: 2,
-            valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-          ),
-        )
-            : Icon(icon),
-        label: Text(text),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: backgroundColor ?? Colors.blue[700],
-          foregroundColor: textColor ?? Colors.white,
-          padding: EdgeInsets.all(16.h),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
-          elevation: isEnabled ? 2 : 0,
-        ),
-      ),
-    );
-  }

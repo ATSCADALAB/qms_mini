@@ -1,4 +1,3 @@
-// lib/widgets/action_button.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -58,8 +57,8 @@ class ActionButton extends StatelessWidget {
           elevation: canPress ? elevation : 0,
           disabledBackgroundColor: backgroundColor?.withOpacity(0.5) ??
               Theme.of(context).primaryColor.withOpacity(0.5),
-          disabledForegroundColor: textColor?.withOpacity(0.5) ??
-              Colors.white.withOpacity(0.5),
+          disabledForegroundColor:
+          textColor?.withOpacity(0.5) ?? Colors.white.withOpacity(0.5),
         ),
       ),
     );
@@ -78,7 +77,6 @@ class ActionButton extends StatelessWidget {
         ),
       );
     }
-
     return Icon(
       icon,
       size: 20.w,
@@ -86,7 +84,8 @@ class ActionButton extends StatelessWidget {
   }
 }
 
-// Specialized button variants
+//--- Biến thể của Button ---//
+
 class PrimaryButton extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -232,7 +231,6 @@ class DangerButton extends StatelessWidget {
   }
 }
 
-// Compact button for small spaces
 class CompactActionButton extends StatelessWidget {
   final String text;
   final IconData icon;
@@ -265,7 +263,6 @@ class CompactActionButton extends StatelessWidget {
   }
 }
 
-// Icon-only button
 class IconActionButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback? onPressed;
@@ -322,7 +319,6 @@ class IconActionButton extends StatelessWidget {
         child: button,
       );
     }
-
     return button;
   }
 }

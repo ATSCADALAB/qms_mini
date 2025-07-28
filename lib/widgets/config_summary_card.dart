@@ -1,4 +1,3 @@
-// lib/widgets/config_summary_card.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
@@ -36,7 +35,8 @@ class ConfigSummaryCard extends StatelessWidget {
           children: [
             _buildHeader(context),
             SizedBox(height: 12.h),
-            ...items.entries.map((entry) => _buildSummaryRow(entry.key, entry.value)),
+            ...items.entries
+                .map((entry) => _buildSummaryRow(context, entry.key, entry.value)),
           ],
         ),
       ),
@@ -85,7 +85,7 @@ class ConfigSummaryCard extends StatelessWidget {
     );
   }
 
-  Widget _buildSummaryRow(String label, String value) {
+  Widget _buildSummaryRow(BuildContext context, String label, String value) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 6.h),
       child: Column(
@@ -110,7 +110,8 @@ class ConfigSummaryCard extends StatelessWidget {
                   style: TextStyle(
                     color: value.isEmpty ? Colors.red[600] : Colors.black87,
                     fontSize: 13.sp,
-                    fontWeight: value.isEmpty ? FontWeight.w400 : FontWeight.w500,
+                    fontWeight:
+                    value.isEmpty ? FontWeight.w400 : FontWeight.w500,
                   ),
                 ),
               ),
@@ -126,7 +127,8 @@ class ConfigSummaryCard extends StatelessWidget {
   }
 }
 
-// Specialized config cards
+//--- Các Card chuyên biệt ---//
+
 class DeviceInfoCard extends StatelessWidget {
   final String deviceName;
   final String storeId;
@@ -221,7 +223,6 @@ class QueueSettingsCard extends StatelessWidget {
   }
 }
 
-// Status summary card with colored indicators
 class StatusSummaryCard extends StatelessWidget {
   final String title;
   final Map<String, StatusInfo> statusItems;
@@ -281,14 +282,15 @@ class StatusSummaryCard extends StatelessWidget {
               ],
             ),
             SizedBox(height: 12.h),
-            ...statusItems.entries.map((entry) => _buildStatusRow(entry.key, entry.value)),
+            ...statusItems.entries
+                .map((entry) => _buildStatusRow(context, entry.key, entry.value)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusRow(String label, StatusInfo status) {
+  Widget _buildStatusRow(BuildContext context, String label, StatusInfo status) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 6.h),
       child: Row(
@@ -338,7 +340,6 @@ class StatusSummaryCard extends StatelessWidget {
   }
 }
 
-// Data class for status information
 class StatusInfo {
   final String text;
   final Color color;
@@ -350,7 +351,6 @@ class StatusInfo {
     this.icon,
   });
 
-  // Factory constructors for common statuses
   factory StatusInfo.success(String text) {
     return StatusInfo(text: text, color: Colors.green);
   }
@@ -372,7 +372,6 @@ class StatusInfo {
   }
 }
 
-// Statistics card for numerical data
 class StatsCard extends StatelessWidget {
   final String title;
   final Map<String, dynamic> stats;
@@ -415,14 +414,15 @@ class StatsCard extends StatelessWidget {
               ],
             ),
             SizedBox(height: 12.h),
-            ...stats.entries.map((entry) => _buildStatRow(entry.key, entry.value)),
+            ...stats.entries
+                .map((entry) => _buildStatRow(context, entry.key, entry.value)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatRow(String label, dynamic value) {
+  Widget _buildStatRow(BuildContext context, String label, dynamic value) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: 4.h),
       child: Row(

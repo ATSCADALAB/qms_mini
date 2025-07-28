@@ -4,7 +4,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/queue_item.dart';
 import '../utils/constants.dart';
-
+import 'package:flutter/foundation.dart';
 class DatabaseService {
   static Database? _database;
   static final DatabaseService _instance = DatabaseService._internal();

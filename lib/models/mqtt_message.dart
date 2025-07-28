@@ -1,258 +1,156 @@
-// lib/models/mqtt_message.dart
 import 'dart:convert';
+import '../utils/helpers.dart'; // Giả sử bạn có file này
 
+/// Enum định nghĩa các loại message khác nhau trong hệ thống.
+/// Sử dụng enum giúp code rõ ràng và tránh lỗi gõ sai chuỗi.
 enum MqttMessageType {
+  unknown,
   queueAdd,
   queueCall,
-  queuePriority,
   queueDelete,
-  displayUpdate,
-  systemStatus,
+  queuePriority,
   deviceHeartbeat,
+  deviceStatus,
+  systemStatus,
   configUpdate,
   syncRequest,
   syncResponse,
-  unknown,
 }
 
+/// Lớp đại diện cho một thông điệp MQTT hoàn chỉnh, có cấu trúc.
 class MqttMessage {
   final String topic;
-  final String rawPayload;
   final Map<String, dynamic> payload;
-  final DateTime timestamp;
+  final DateTime receivedAt;
   final MqttMessageType type;
+  final String storeId;
 
   MqttMessage({
     required this.topic,
-    required this.rawPayload,
     required this.payload,
-    DateTime? timestamp,
-  }) : timestamp = timestamp ?? DateTime.now(),
-        type = _getMessageType(topic);
+    required this.type,
+    required this.storeId,
+  }) : receivedAt = DateTime.now();
 
-  // Create from MQTT message
-  factory MqttMessage.fromMqtt({
-    required String topic,
-    required String payload,
-  }) {
-    Map<String, dynamic> parsedPayload = {};
+  // --- FACTORY CONSTRUCTORS ---
 
-    try {
-      parsedPayload = jsonDecode(payload) as Map<String, dynamic>;
-    } catch (e) {
-      // If payload is not JSON, create a simple map
-      parsedPayload = {'raw': payload};
-    }
+  /// **Hàm chính:** Tạo một MqttMessage từ topic và payload thô nhận được.
+  /// Hàm này sẽ tự động phân tích topic để xác định loại message và storeId.
+  factory MqttMessage.fromMqtt(String topic, String rawPayload) {
+    final payloadMap = AppHelpers.safeJsonDecode(rawPayload) ?? {'raw': rawPayload};
+    final parts = topic.split('/');
+    final String storeId = (parts.length > 1 && parts[0] == 'store') ? parts[1] : '*';
+    final MqttMessageType messageType = _getMessageTypeFromTopic(parts);
 
     return MqttMessage(
       topic: topic,
-      rawPayload: payload,
-      payload: parsedPayload,
+      payload: payloadMap,
+      type: messageType,
+      storeId: storeId,
     );
   }
 
-  // Create queue add message
+  /// Tạo message "thêm số mới" để gửi đi.
   factory MqttMessage.queueAdd({
     required String storeId,
     required int number,
     required String prefix,
-    String operator = 'tablet1',
-    String? notes,
+    String operator = 'kiosk',
+    int priority = 0,
   }) {
+    final topic = 'store/$storeId/queue/add';
     final payload = {
-      'action': 'add',
       'number': number,
       'prefix': prefix,
       'status': 'waiting',
-      'priority': 0,
-      'created_time': DateTime.now().toIso8601String(),
+      'priority': priority,
       'operator': operator,
-      if (notes != null) 'notes': notes,
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': AppHelpers.getCurrentDateTime(),
     };
-
-    return MqttMessage(
-      topic: 'queue/$storeId/add',
-      rawPayload: jsonEncode(payload),
-      payload: payload,
-    );
+    return MqttMessage(topic: topic, payload: payload, type: MqttMessageType.queueAdd, storeId: storeId);
   }
 
-  // Create device heartbeat message
+  /// Tạo message "heartbeat" của thiết bị để gửi đi.
   factory MqttMessage.deviceHeartbeat({
     required String storeId,
     required String deviceType,
-    required String deviceName,
-    required Map<String, dynamic> status,
+    required Map<String, dynamic> statusData,
   }) {
+    final topic = 'store/$storeId/device/$deviceType/heartbeat';
     final payload = {
-      'device_type': deviceType,
-      'device_name': deviceName,
       'status': 'online',
-      'timestamp': DateTime.now().toIso8601String(),
-      'data': status,
+      'data': statusData,
+      'timestamp': AppHelpers.getCurrentDateTime(),
     };
-
-    return MqttMessage(
-      topic: 'device/$storeId/$deviceType/heartbeat',
-      rawPayload: jsonEncode(payload),
-      payload: payload,
-    );
+    return MqttMessage(topic: topic, payload: payload, type: MqttMessageType.deviceHeartbeat, storeId: storeId);
   }
 
-  // Create sync response message
+  /// Tạo message "phản hồi đồng bộ" để gửi đi.
   factory MqttMessage.syncResponse({
     required String storeId,
-    required List<Map<String, dynamic>> queueData,
     required String requestId,
+    required List<Map<String, dynamic>> queueData,
   }) {
+    final topic = 'store/$storeId/sync/response';
     final payload = {
-      'action': 'sync_response',
       'request_id': requestId,
-      'device_type': 'tablet1',
       'queue_data': queueData,
-      'timestamp': DateTime.now().toIso8601String(),
+      'timestamp': AppHelpers.getCurrentDateTime(),
     };
-
-    return MqttMessage(
-      topic: 'sync/$storeId/response',
-      rawPayload: jsonEncode(payload),
-      payload: payload,
-    );
+    return MqttMessage(topic: topic, payload: payload, type: MqttMessageType.syncResponse, storeId: storeId);
   }
 
-  // Determine message type from topic
-  static MqttMessageType _getMessageType(String topic) {
-    final parts = topic.split('/');
-    if (parts.length < 2) return MqttMessageType.unknown;
 
-    final category = parts[0];
-    final action = parts.length > 2 ? parts[2] : '';
+  // --- GETTERS & HELPERS ---
 
-    switch (category) {
-      case 'queue':
-        switch (action) {
-          case 'add':
-            return MqttMessageType.queueAdd;
-          case 'call':
-            return MqttMessageType.queueCall;
-          case 'priority_call':
-            return MqttMessageType.queuePriority;
-          case 'delete':
-            return MqttMessageType.queueDelete;
-          default:
-            return MqttMessageType.unknown;
-        }
-      case 'display':
-        return MqttMessageType.displayUpdate;
-      case 'system':
-        return MqttMessageType.systemStatus;
-      case 'device':
-        return MqttMessageType.deviceHeartbeat;
-      case 'config':
-        return MqttMessageType.configUpdate;
-      case 'sync':
-        if (action == 'request') {
-          return MqttMessageType.syncRequest;
-        } else if (action == 'response') {
-          return MqttMessageType.syncResponse;
-        }
-        return MqttMessageType.unknown;
-      default:
-        return MqttMessageType.unknown;
-    }
-  }
+  /// Lấy payload dưới dạng chuỗi JSON để gửi đi.
+  String get rawPayload => jsonEncode(payload);
 
-  // Check if message is for this store
-  bool isForStore(String storeId) {
-    return topic.contains('/$storeId/');
-  }
-
-  // Get store ID from topic
-  String? get storeId {
-    final parts = topic.split('/');
-    if (parts.length >= 2) {
-      return parts[1];
-    }
-    return null;
-  }
-
-  // Get device type from topic (for device messages)
-  String? get deviceType {
-    if (type == MqttMessageType.deviceHeartbeat) {
-      final parts = topic.split('/');
-      if (parts.length >= 3) {
-        return parts[2];
-      }
-    }
-    return null;
-  }
-
-  // Get action from payload
-  String? get action => payload['action'] as String?;
-
-  // Get timestamp from payload (fallback to message timestamp)
+  /// Lấy timestamp từ payload, nếu không có thì dùng thời gian nhận message.
   DateTime get payloadTimestamp {
     final timestampStr = payload['timestamp'] as String?;
     if (timestampStr != null) {
-      try {
-        return DateTime.parse(timestampStr);
-      } catch (e) {
-        // Invalid timestamp, use message timestamp
-      }
+      return DateTime.tryParse(timestampStr) ?? receivedAt;
     }
-    return timestamp;
+    return receivedAt;
   }
 
-  // Validate message structure
+  /// Kiểm tra message có dành cho store hiện tại không.
+  bool isForStore(String currentStoreId) {
+    return storeId == currentStoreId || storeId == '*'; // '*' là wildcard cho tất cả store
+  }
+
+  /// **Điểm cải tiến:** Tóm tắt nội dung message một cách thông minh hơn để log.
+  String get summary {
+    final action = type.toString().split('.').last;
+    final details = payload.containsKey('number')
+        ? '${payload['prefix']}${payload['number']}'
+        : payload.containsKey('request_id')
+        ? payload['request_id']
+        : '';
+    return 'Action: $action ${details.isNotEmpty ? "($details)" : ""}';
+  }
+
+  /// **Điểm cải tiến:** Kiểm tra cấu trúc payload có hợp lệ không.
   bool get isValid {
     switch (type) {
       case MqttMessageType.queueAdd:
-        return payload.containsKey('number') &&
-            payload.containsKey('prefix') &&
-            payload.containsKey('operator');
-
       case MqttMessageType.queueCall:
-      case MqttMessageType.queuePriority:
-        return payload.containsKey('number') || payload.containsKey('action');
-
+        return payload.containsKey('number') && payload.containsKey('prefix');
       case MqttMessageType.deviceHeartbeat:
-        return payload.containsKey('device_type') &&
-            payload.containsKey('status');
-
+        return payload.containsKey('status');
       case MqttMessageType.syncRequest:
         return payload.containsKey('request_id');
-
       case MqttMessageType.syncResponse:
-        return payload.containsKey('request_id') &&
-            payload.containsKey('queue_data');
-
+        return payload.containsKey('request_id') && payload.containsKey('queue_data');
       default:
-        return true; // For other types, assume valid
-    }
-  }
-
-  // Get display summary for debugging
-  String get summary {
-    switch (type) {
-      case MqttMessageType.queueAdd:
-        return 'New queue: ${payload['prefix']}${payload['number']}';
-      case MqttMessageType.queueCall:
-        return 'Call queue: ${payload['number'] ?? 'next'}';
-      case MqttMessageType.queuePriority:
-        return 'Priority call: ${payload['number']}';
-      case MqttMessageType.deviceHeartbeat:
-        return 'Heartbeat from ${payload['device_type']}';
-      case MqttMessageType.syncRequest:
-        return 'Sync request: ${payload['request_id']}';
-      default:
-        return 'MQTT: ${type.toString().split('.').last}';
+        return true; // Các loại khác mặc định là hợp lệ
     }
   }
 
   @override
   String toString() {
-    return 'MqttMessage{topic: $topic, type: $type, timestamp: $timestamp}';
+    return 'MqttMessage(type: $type, topic: $topic)';
   }
 
   @override
@@ -261,9 +159,52 @@ class MqttMessage {
           other is MqttMessage &&
               runtimeType == other.runtimeType &&
               topic == other.topic &&
-              rawPayload == other.rawPayload &&
-              timestamp == other.timestamp;
+              rawPayload == other.rawPayload;
 
   @override
-  int get hashCode => topic.hashCode ^ rawPayload.hashCode ^ timestamp.hashCode;
+  int get hashCode => topic.hashCode ^ rawPayload.hashCode;
+}
+
+
+/// **Hàm private, logic cốt lõi:**
+/// Xác định loại message từ các phần của topic.
+/// Cách này linh hoạt hơn, cho phép cấu trúc topic phức tạp.
+MqttMessageType _getMessageTypeFromTopic(List<String> parts) {
+  if (parts.length < 3) return MqttMessageType.unknown;
+
+  final category = parts[2];
+  final action = parts.length > 3 ? parts[3] : '';
+
+  switch (category) {
+    case 'queue':
+      switch (action) {
+        case 'add': return MqttMessageType.queueAdd;
+        case 'call': return MqttMessageType.queueCall;
+        case 'delete': return MqttMessageType.queueDelete;
+        case 'priority': return MqttMessageType.queuePriority;
+      }
+      break;
+    case 'sync':
+      switch (action) {
+        case 'request': return MqttMessageType.syncRequest;
+        case 'response': return MqttMessageType.syncResponse;
+      }
+      break;
+    case 'device':
+      if (parts.length > 4) {
+        switch (parts[4]) {
+          case 'heartbeat': return MqttMessageType.deviceHeartbeat;
+          case 'status': return MqttMessageType.deviceStatus;
+        }
+      }
+      break;
+    case 'system':
+      if (action == 'status') return MqttMessageType.systemStatus;
+      break;
+    case 'config':
+      if (action == 'update') return MqttMessageType.configUpdate;
+      break;
+  }
+
+  return MqttMessageType.unknown;
 }

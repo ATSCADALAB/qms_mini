@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/device_config.dart';
 import '../utils/constants.dart';
+import '../utils/validation_rules.dart';
 
 class ConfigService extends ChangeNotifier {
   static final ConfigService _instance = ConfigService._internal();

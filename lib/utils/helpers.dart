@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'constants.dart';
-
+import 'dart:async'; // Thêm dòng này cho Timer
+import 'dart:math';  // Thêm dòng này cho sqrt, pow
 class AppHelpers {
   // ========== DATE & TIME HELPERS ==========
 
