@@ -8,7 +8,7 @@ import '../../services/config_service.dart';
 import '../../services/mqtt_service.dart';
 import '../../services/printer_service.dart';
 import '../../utils/constants.dart';
-import '../../utils/validation_rules.dart';
+import '../../utils/validation_rules.dart'; // Giả sử bạn có file này, nếu không hãy xóa hoặc thay bằng logic tương ứng
 import '../../widgets/status_indicator.dart';
 import '../../widgets/action_button.dart';
 import '../../widgets/config_summary_card.dart';
@@ -21,6 +21,7 @@ class SetupScreen extends StatefulWidget {
 }
 
 class _SetupScreenState extends State<SetupScreen> {
+  // GlobalKey cho Form cha duy nhất
   final _formKey = GlobalKey<FormState>();
   final _pageController = PageController();
   int _currentPage = 0;
@@ -46,21 +47,29 @@ class _SetupScreenState extends State<SetupScreen> {
   bool _isTestingMqtt = false;
   bool _isTestingPrinter = false;
   bool _isSaving = false;
+  bool _isDisposed = false;
 
   @override
   void initState() {
     super.initState();
-    // ✅ Bỏ setup animations và clock stream
     _loadExistingConfig();
     print("🔧 [SETUP] Setup screen initialized");
   }
 
   @override
   void dispose() {
-    print("🧹 [SETUP] Disposing setup screen...");
-    _pageController.dispose();
-    _disposeControllers();
+    print("🧹 [SETUP] Starting dispose...");
+    _isDisposed = true;
+
+    try {
+      _pageController.dispose();
+      _disposeControllers();
+    } catch (e) {
+      print("⚠️ [SETUP] Error during dispose: $e");
+    }
+
     super.dispose();
+    print("✅ [SETUP] Dispose completed");
   }
 
   void _disposeControllers() {
@@ -82,13 +91,25 @@ class _SetupScreenState extends State<SetupScreen> {
     }
   }
 
+  void _safeSetState(VoidCallback fn) {
+    if (!_isDisposed && mounted) {
+      setState(fn);
+    }
+  }
+
+  bool get _canUseContext => !_isDisposed && mounted && context.mounted;
+
   Future<void> _loadExistingConfig() async {
     try {
+      // Chờ frame đầu tiên build xong để context sẵn sàng
+      await WidgetsBinding.instance.endOfFrame;
+      if (!_canUseContext) return;
+
       final configService = context.read<ConfigService>();
       final config = configService.config;
 
       if (config != null) {
-        setState(() {
+        _safeSetState(() {
           _storeIdController.text = config.storeId;
           _deviceNameController.text = config.deviceName;
           _mqttBrokerController.text = config.mqttBroker;
@@ -112,6 +133,10 @@ class _SetupScreenState extends State<SetupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_isDisposed) {
+      return const SizedBox.shrink();
+    }
+
     return Scaffold(
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
@@ -130,41 +155,48 @@ class _SetupScreenState extends State<SetupScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Progress indicator
-          _buildProgressIndicator(),
+      // SỬA LỖI: Bọc toàn bộ body bằng một Form widget duy nhất
+      body: Form(
+        key: _formKey, // Gán key cho Form cha này
+        child: Column(
+          children: [
+            // Progress indicator
+            _buildProgressIndicator(),
 
-          // Content
-          Expanded(
-            child: PageView(
-              controller: _pageController,
-              onPageChanged: (index) => setState(() => _currentPage = index),
-              physics: const NeverScrollableScrollPhysics(), // Disable swipe
-              children: [
-                _buildBasicConfigPage(),
-                _buildConnectionConfigPage(),
-                _buildTestSavePage(),
-              ],
+            // Content
+            Expanded(
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) => _safeSetState(() => _currentPage = index),
+                physics: const NeverScrollableScrollPhysics(),
+                children: [
+                  _buildBasicConfigPage(),
+                  _buildConnectionConfigPage(),
+                  _buildTestSavePage(),
+                ],
+              ),
             ),
-          ),
 
-          // Bottom navigation
-          _buildBottomNavigation(),
-        ],
+            // Bottom navigation
+            _buildBottomNavigation(),
+          ],
+        ),
       ),
     );
   }
 
   Widget _buildProgressIndicator() {
     return Container(
-      padding: EdgeInsets.all(16.w),
+      padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
       color: Color(AppConstants.colors['primary']!),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          _buildProgressStep(0, 'Cơ bản', Icons.info),
+          _buildProgressStep(0, 'Cơ bản', Icons.info_outline),
+          _buildProgressLine(0),
           _buildProgressStep(1, 'Kết nối', Icons.wifi),
-          _buildProgressStep(2, 'Hoàn tất', Icons.check_circle),
+          _buildProgressLine(1),
+          _buildProgressStep(2, 'Hoàn tất', Icons.check_circle_outline),
         ],
       ),
     );
@@ -174,191 +206,168 @@ class _SetupScreenState extends State<SetupScreen> {
     final isActive = step <= _currentPage;
     final isCompleted = step < _currentPage;
 
-    return Expanded(
-      child: Row(
-        children: [
-          // Step indicator
-          Container(
-            width: 40.w,
-            height: 40.h,
-            decoration: BoxDecoration(
-              color: isCompleted
-                  ? Colors.green
-                  : isActive
-                  ? Colors.white
-                  : Colors.blue[400],
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.white,
-                width: 2,
-              ),
-            ),
-            child: Icon(
-              isCompleted ? Icons.check : icon,
-              color: isCompleted
-                  ? Colors.white
-                  : isActive
-                  ? Color(AppConstants.colors['primary']!)
-                  : Colors.white,
-              size: 20.w,
-            ),
+    return Column(
+      children: [
+        Container(
+          width: 36.w,
+          height: 36.w,
+          decoration: BoxDecoration(
+            color: isCompleted ? Colors.green : (isActive ? Colors.white : Colors.blue[400]),
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.white, width: 2),
           ),
+          child: Icon(
+            isCompleted ? Icons.check : icon,
+            color: isActive && !isCompleted ? Color(AppConstants.colors['primary']!) : Colors.white,
+            size: 18.w,
+          ),
+        ),
+        SizedBox(height: 4.h),
+        Text(
+          title,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 12.sp,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        )
+      ],
+    );
+  }
 
-          if (step < 2) ...[
-            SizedBox(width: 8.w),
-            Expanded(
-              child: Text(
-                title,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 12.sp,
-                  fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-                ),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-            if (step < 1)
-              Container(
-                height: 2.h,
-                color: step < _currentPage ? Colors.green : Colors.white30,
-                width: 20.w,
-              ),
-          ],
-        ],
+  Widget _buildProgressLine(int step) {
+    final isCompleted = step < _currentPage;
+    return Expanded(
+      child: Container(
+        height: 2.h,
+        color: isCompleted ? Colors.green : Colors.white30,
+        margin: EdgeInsets.only(bottom: 20.h),
       ),
     );
   }
 
   Widget _buildBasicConfigPage() {
+    // SỬA LỖI: Không cần Widget Form ở đây nữa
     return SingleChildScrollView(
       padding: EdgeInsets.all(16.w),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildSectionCard(
-              'THÔNG TIN CƠ BẢN',
-              Icons.info,
-              [
-                TextFormField(
-                  controller: _storeIdController,
-                  decoration: const InputDecoration(
-                    labelText: 'Store ID *',
-                    hintText: 'STORE001, BRANCH_HCM, etc.',
-                    prefixIcon: Icon(Icons.store),
-                    helperText: 'ID duy nhất của cửa hàng/chi nhánh',
-                  ),
-                  textCapitalization: TextCapitalization.characters,
-                  validator: (value) {
-                    if (value?.isEmpty == true) {
-                      return ErrorMessages.emptyStoreId;
-                    }
-                    if (!ValidationRules.isValidStoreId(value!)) {
-                      return ErrorMessages.invalidStoreId;
-                    }
-                    return null;
-                  },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildSectionCard(
+            'THÔNG TIN CƠ BẢN',
+            Icons.info,
+            [
+              TextFormField(
+                controller: _storeIdController,
+                decoration: const InputDecoration(
+                  labelText: 'Store ID *',
+                  hintText: 'STORE001, BRANCH_HCM, etc.',
+                  prefixIcon: Icon(Icons.store),
+                  helperText: 'ID duy nhất của cửa hàng/chi nhánh',
                 ),
-                SizedBox(height: 16.h),
-
-                TextFormField(
-                  controller: _deviceNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Tên thiết bị',
-                    hintText: 'Máy in quầy 1',
-                    prefixIcon: Icon(Icons.tablet_android),
-                    helperText: 'Tên hiển thị của thiết bị này',
-                  ),
-                  validator: (value) {
-                    if (value != null &&
-                        value.length > ValidationRules.maxDeviceNameLength) {
-                      return 'Tên thiết bị không được quá ${ValidationRules.maxDeviceNameLength} ký tự';
-                    }
-                    return null;
-                  },
+                textCapitalization: TextCapitalization.characters,
+                validator: (value) {
+                  if (value?.isEmpty ?? true) {
+                    return 'Store ID không được để trống';
+                  }
+                  if (value!.length < 3) {
+                    return 'Store ID phải có ít nhất 3 ký tự';
+                  }
+                  return null;
+                },
+              ),
+              SizedBox(height: 16.h),
+              TextFormField(
+                controller: _deviceNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Tên thiết bị',
+                  hintText: 'Máy in quầy 1',
+                  prefixIcon: Icon(Icons.tablet_android),
+                  helperText: 'Tên hiển thị của thiết bị này',
                 ),
-                SizedBox(height: 24.h),
-
-                // Queue settings
-                Text(
-                  'CẤU HÌNH HÀNG ĐỢI',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                  ),
-                ),
-                SizedBox(height: 12.h),
-
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextFormField(
-                        controller: _queuePrefixController,
-                        decoration: const InputDecoration(
-                          labelText: 'Prefix số',
-                          hintText: 'A, B, VIP',
-                          helperText: 'Chữ cái đầu số',
-                        ),
-                        textCapitalization: TextCapitalization.characters,
-                        validator: (value) {
-                          if (value?.isEmpty == true) {
-                            return ErrorMessages.emptyPrefix;
-                          }
-                          if (!ValidationRules.isValidPrefix(value!)) {
-                            return ErrorMessages.invalidPrefix;
-                          }
-                          return null;
-                        },
+                validator: (value) {
+                  if (value != null && value.length > 50) {
+                    return 'Tên thiết bị không được quá 50 ký tự';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+          SizedBox(height: 16.h),
+          _buildSectionCard(
+            'CẤU HÌNH HÀNG ĐỢI',
+            Icons.format_list_numbered,
+            [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: _queuePrefixController,
+                      decoration: const InputDecoration(
+                        labelText: 'Prefix số',
+                        hintText: 'A, B, VIP',
+                        helperText: 'Chữ cái đầu',
                       ),
+                      textCapitalization: TextCapitalization.characters,
+                      validator: (value) {
+                        if (value?.isEmpty ?? true) {
+                          return 'Prefix không được để trống';
+                        }
+                        if (value!.length > 5) {
+                          return 'Prefix không được quá 5 ký tự';
+                        }
+                        return null;
+                      },
                     ),
-                    SizedBox(width: 16.w),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _startNumberController,
-                        decoration: const InputDecoration(
-                          labelText: 'Số bắt đầu',
-                          hintText: '1',
-                          helperText: 'Số đầu tiên',
-                        ),
-                        keyboardType: TextInputType.number,
-                        validator: (value) {
-                          final number = int.tryParse(value ?? '');
-                          if (number == null || number < 1) {
-                            return 'Số bắt đầu phải lớn hơn 0';
-                          }
-                          return null;
-                        },
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _startNumberController,
+                      decoration: const InputDecoration(
+                        labelText: 'Số bắt đầu',
+                        hintText: '1',
+                        helperText: 'Số đầu tiên',
                       ),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        final number = int.tryParse(value ?? '');
+                        if (number == null || number < 1) {
+                          return 'Phải > 0';
+                        }
+                        return null;
+                      },
                     ),
-                    SizedBox(width: 16.w),
-                    Expanded(
-                      child: TextFormField(
-                        controller: _resetTimeController,
-                        decoration: const InputDecoration(
-                          labelText: 'Reset lúc',
-                          hintText: '00:00',
-                          helperText: 'Giờ reset hàng ngày',
-                        ),
-                        validator: (value) {
-                          if (value?.isNotEmpty == true &&
-                              !ValidationRules.isValidTime(value!)) {
-                            return ErrorMessages.invalidResetTime;
-                          }
-                          return null;
-                        },
+                  ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: TextFormField(
+                      controller: _resetTimeController,
+                      decoration: const InputDecoration(
+                        labelText: 'Reset lúc',
+                        hintText: '00:00',
+                        helperText: 'Giờ reset',
                       ),
+                      validator: (value) {
+                        if (value?.isNotEmpty == true) {
+                          final timeRegex = RegExp(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$');
+                          if (!timeRegex.hasMatch(value!)) {
+                            return 'Sai (HH:mm)';
+                          }
+                        }
+                        return null;
+                      },
                     ),
-                  ],
-                ),
-              ],
-            ),
-
-            SizedBox(height: 24.h),
-            _buildInfoCard(),
-          ],
-        ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          SizedBox(height: 24.h),
+          _buildInfoCard(),
+        ],
       ),
     );
   }
@@ -370,7 +379,7 @@ class _SetupScreenState extends State<SetupScreen> {
         children: [
           _buildSectionCard(
             'MQTT BROKER',
-            Icons.wifi,
+            Icons.cloud_queue,
             [
               TextFormField(
                 controller: _mqttBrokerController,
@@ -381,20 +390,15 @@ class _SetupScreenState extends State<SetupScreen> {
                   helperText: 'Địa chỉ máy chủ MQTT',
                 ),
                 validator: (value) {
-                  if (value?.isEmpty == true) {
-                    return ErrorMessages.emptyMqttBroker;
+                  if (value?.isEmpty ?? true) {
+                    return 'MQTT Broker không được để trống';
                   }
-                  final isValidIP = ValidationRules.isValidIP(value!);
-                  final isValidDomain = ValidationRules.isValidDomain(value);
-                  if (!isValidIP && !isValidDomain) {
-                    return ErrorMessages.invalidMqttBroker;
-                  }
-                  return null;
+                  return null; // Thêm validation chi tiết nếu cần
                 },
               ),
               SizedBox(height: 16.h),
-
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     flex: 2,
@@ -403,13 +407,13 @@ class _SetupScreenState extends State<SetupScreen> {
                       decoration: const InputDecoration(
                         labelText: 'Port',
                         hintText: '1883',
-                        helperText: 'Cổng kết nối',
+                        helperText: 'Cổng',
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) {
                         final port = int.tryParse(value ?? '');
-                        if (port == null || !ValidationRules.isValidPort(port)) {
-                          return ErrorMessages.invalidMqttPort;
+                        if (port == null || port < 1 || port > 65535) {
+                          return 'Port sai';
                         }
                         return null;
                       },
@@ -429,21 +433,18 @@ class _SetupScreenState extends State<SetupScreen> {
                 ],
               ),
               SizedBox(height: 16.h),
-
               TextFormField(
                 controller: _mqttPasswordController,
                 decoration: const InputDecoration(
                   labelText: 'Password (tùy chọn)',
-                  prefixIcon: Icon(Icons.lock),
+                  prefixIcon: Icon(Icons.lock_outline),
                   helperText: 'Mật khẩu đăng nhập',
                 ),
                 obscureText: true,
               ),
             ],
           ),
-
           SizedBox(height: 16.h),
-
           _buildSectionCard(
             'MÁY IN',
             Icons.print,
@@ -451,22 +452,20 @@ class _SetupScreenState extends State<SetupScreen> {
               DropdownButtonFormField<String>(
                 decoration: const InputDecoration(
                   labelText: 'Loại máy in',
-                  prefixIcon: Icon(Icons.print),
-                  helperText: 'Chọn loại máy in',
+                  //prefixIcon: Icon(Icons.print_outline),
+                  helperText: 'Chọn loại máy in phù hợp',
                 ),
                 value: _printerType,
                 items: const [
-                  DropdownMenuItem(
-                      value: 'thermal', child: Text('Thermal (80mm)')),
-                  DropdownMenuItem(
-                      value: 'laser', child: Text('Laser/Inkjet')),
-                  DropdownMenuItem(value: 'pos', child: Text('POS Printer')),
+                  DropdownMenuItem(value: 'thermal', child: Text('Thermal (ESC/POS)')),
+                  // DropdownMenuItem(value: 'laser', child: Text('Laser/Inkjet')),
+                  // DropdownMenuItem(value: 'pos', child: Text('POS Printer')),
                 ],
-                onChanged: (value) => setState(() => _printerType = value!),
+                onChanged: (value) => _safeSetState(() => _printerType = value!),
               ),
               SizedBox(height: 16.h),
-
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     flex: 3,
@@ -475,14 +474,15 @@ class _SetupScreenState extends State<SetupScreen> {
                       decoration: const InputDecoration(
                         labelText: 'IP Máy in *',
                         hintText: '192.168.1.50',
-                        helperText: 'Địa chỉ IP máy in',
+                        helperText: 'Địa chỉ IP của máy in',
                       ),
                       validator: (value) {
-                        if (value?.isEmpty == true) {
-                          return ErrorMessages.emptyPrinterIP;
+                        if (value?.isEmpty ?? true) {
+                          return 'IP không được trống';
                         }
-                        if (!ValidationRules.isValidIP(value!)) {
-                          return ErrorMessages.invalidPrinterIP;
+                        // Sử dụng helper function để validate IP
+                        if (!_isValidIPAddress(value!)) {
+                          return 'Địa chỉ IP không hợp lệ';
                         }
                         return null;
                       },
@@ -490,18 +490,19 @@ class _SetupScreenState extends State<SetupScreen> {
                   ),
                   SizedBox(width: 16.w),
                   Expanded(
+                    flex: 2,
                     child: TextFormField(
                       controller: _printerPortController,
                       decoration: const InputDecoration(
                         labelText: 'Port',
                         hintText: '9100',
-                        helperText: 'Cổng máy in',
+                        helperText: 'Cổng',
                       ),
                       keyboardType: TextInputType.number,
                       validator: (value) {
                         final port = int.tryParse(value ?? '');
-                        if (port == null || !ValidationRules.isValidPort(port)) {
-                          return ErrorMessages.invalidPrinterPort;
+                        if (port == null || port < 1 || port > 65535) {
+                          return 'Port sai';
                         }
                         return null;
                       },
@@ -522,7 +523,7 @@ class _SetupScreenState extends State<SetupScreen> {
       child: Column(
         children: [
           _buildSectionCard(
-            'TEST KẾT NỐI',
+            'KIỂM TRA & XÁC NHẬN',
             Icons.wifi_find,
             [
               Row(
@@ -530,7 +531,7 @@ class _SetupScreenState extends State<SetupScreen> {
                   Expanded(
                     child: ActionButton(
                       text: 'TEST MQTT',
-                      icon: Icons.wifi,
+                      icon: Icons.cloud_sync_outlined,
                       backgroundColor: Colors.orange,
                       isLoading: _isTestingMqtt,
                       onPressed: _testMqttConnection,
@@ -539,20 +540,19 @@ class _SetupScreenState extends State<SetupScreen> {
                   SizedBox(width: 16.w),
                   Expanded(
                     child: ActionButton(
-                      text: 'TEST PRINTER',
-                      icon: Icons.print,
-                      backgroundColor: Colors.orange,
+                      text: 'TEST MÁY IN',
+                      icon: Icons.print_outlined,
+                      backgroundColor: Colors.blue,
                       isLoading: _isTestingPrinter,
                       onPressed: _testPrinterConnection,
                     ),
                   ),
                 ],
               ),
+              SizedBox(height: 16.h),
+              _buildStatusCard(),
             ],
           ),
-
-          SizedBox(height: 16.h),
-          _buildStatusCard(),
           SizedBox(height: 16.h),
           _buildConfigSummaryCard(),
         ],
@@ -563,6 +563,7 @@ class _SetupScreenState extends State<SetupScreen> {
   Widget _buildSectionCard(String title, IconData icon, List<Widget> children) {
     return Card(
       elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: EdgeInsets.all(16.w),
         child: Column(
@@ -570,19 +571,19 @@ class _SetupScreenState extends State<SetupScreen> {
           children: [
             Row(
               children: [
-                Icon(icon, color: Color(AppConstants.colors['primary']!)),
+                Icon(icon, color: Color(AppConstants.colors['primary']!), size: 24.w),
                 SizedBox(width: 8.w),
                 Text(
                   title,
                   style: TextStyle(
-                    fontSize: 18.sp,
+                    fontSize: 16.sp,
                     fontWeight: FontWeight.bold,
                     color: Color(AppConstants.colors['primary']!),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 16.h),
+            const Divider(height: 24),
             ...children,
           ],
         ),
@@ -598,56 +599,42 @@ class _SetupScreenState extends State<SetupScreen> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: Colors.blue[200]!),
       ),
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.info, color: Color(AppConstants.colors['primary']!)),
-              SizedBox(width: 8.w),
+              Icon(Icons.lightbulb_outline, color: Colors.blue),
+              SizedBox(width: 8),
               Text(
-                'HƯỚNG DẪN',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(AppConstants.colors['primary']!),
-                ),
+                'LƯU Ý QUAN TRỌNG',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.blue),
               ),
             ],
           ),
-          SizedBox(height: 8.h),
-          const Text('• Store ID phải giống với Tablet 2 và TV Display'),
-          const Text('• Prefix số sẽ hiển thị trước số thứ tự (A001, B001, ...)'),
-          const Text(
-              '• Reset time là giờ reset số về 1 hàng ngày (mặc định 00:00)'),
-          const Text('• Tất cả thiết bị phải cùng mạng WiFi'),
+          SizedBox(height: 8),
+          Text('• Store ID phải giống hệt nhau trên tất cả các thiết bị.'),
+          SizedBox(height: 4),
+          Text('• Prefix số sẽ hiển thị trước số thứ tự (ví dụ: A001).'),
+          SizedBox(height: 4),
+          Text('• Tất cả thiết bị phải kết nối vào cùng một mạng WiFi/LAN.'),
         ],
       ),
     );
   }
 
   Widget _buildStatusCard() {
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(16.w),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'TRẠNG THÁI HỆ THỐNG',
-              style: TextStyle(
-                fontSize: 16.sp,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: 16.h),
-            StatusIndicator(
-                label: 'MQTT Broker', status: _mqttStatus, icon: Icons.wifi),
-            StatusIndicator(
-                label: 'Máy in', status: _printerStatus, icon: Icons.print),
-            StatusIndicator(
-                label: 'Cấu hình', status: _configStatus, icon: Icons.settings),
-          ],
-        ),
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: 8.w),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          StatusIndicator(label: 'MQTT Broker', status: _mqttStatus, icon: Icons.cloud_queue),
+          SizedBox(height: 8.h),
+          StatusIndicator(label: 'Máy in', status: _printerStatus, icon: Icons.print),
+          SizedBox(height: 8.h),
+          StatusIndicator(label: 'Cấu hình', status: _configStatus, icon: Icons.settings_applications),
+        ],
       ),
     );
   }
@@ -657,16 +644,11 @@ class _SetupScreenState extends State<SetupScreen> {
       title: 'TÓM TẮT CẤU HÌNH',
       items: {
         'Store ID:': _storeIdController.text,
-        'Device:': _deviceNameController.text,
-        'MQTT:':
-        '${_mqttBrokerController.text}:${_mqttPortController.text}',
-        'Printer:':
-        '${_printerIPController.text}:${_printerPortController.text}',
-        'Queue:':
-        '${_queuePrefixController.text} từ số ${_startNumberController.text}',
-        'Reset:': _resetTimeController.text.isEmpty
-            ? 'Không reset'
-            : _resetTimeController.text,
+        'Tên thiết bị:': _deviceNameController.text,
+        'MQTT:': '${_mqttBrokerController.text}:${_mqttPortController.text}',
+        'Máy in:': '${_printerIPController.text}:${_printerPortController.text}',
+        'Hàng đợi:': '${_queuePrefixController.text} (bắt đầu từ ${_startNumberController.text})',
+        'Reset lúc:': _resetTimeController.text.isEmpty ? 'Không reset' : _resetTimeController.text,
       },
     );
   }
@@ -698,7 +680,7 @@ class _SetupScreenState extends State<SetupScreen> {
           if (_currentPage > 0) SizedBox(width: 16.w),
           Expanded(
             child: ActionButton(
-              text: _currentPage < 2 ? 'TIẾP THEO' : 'LƯU VÀ KHỞI ĐỘNG',
+              text: _currentPage < 2 ? 'TIẾP THEO' : 'LƯU & KHỞI ĐỘNG',
               icon: _currentPage < 2 ? Icons.arrow_forward : Icons.save,
               isLoading: _isSaving,
               onPressed: _currentPage < 2 ? _nextPage : _saveAndContinue,
@@ -709,414 +691,304 @@ class _SetupScreenState extends State<SetupScreen> {
     );
   }
 
-  void _nextPage() {
-    // ✅ Safe null check
-    if (_currentPage == 0) {
-      if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
-        return;
-      }
-    }
+  // LOGIC METHODS
 
-    _pageController.nextPage(
-      duration: AppConstants.animationDuration,
-      curve: Curves.easeInOut,
-    );
+  void _nextPage() {
+    if (!_canUseContext || _isSaving) return;
+
+    // Validate toàn bộ form trước khi chuyển trang
+    // Điều này sẽ kiểm tra các trường đã hiển thị
+    final formState = _formKey.currentState;
+    if (formState != null && formState.validate()) {
+      _performPageNavigation(true);
+    } else {
+      print("❌ [SETUP] Form validation failed on page $_currentPage");
+      _showSnackBar('Vui lòng điền đúng và đủ thông tin bắt buộc (*)', Colors.red);
+    }
   }
 
   void _previousPage() {
-    _pageController.previousPage(
-      duration: AppConstants.animationDuration,
-      curve: Curves.easeInOut,
-    );
+    if (!_canUseContext || _isSaving) return;
+    _performPageNavigation(false);
+  }
+
+  void _performPageNavigation(bool isNext) {
+    if (!_canUseContext) return;
+    final duration = AppConstants.animationDuration;
+    final curve = Curves.easeInOut;
+
+    if (isNext) {
+      _pageController.nextPage(duration: duration, curve: curve);
+    } else {
+      _pageController.previousPage(duration: duration, curve: curve);
+    }
   }
 
   Future<void> _testMqttConnection() async {
+    if (!_canUseContext || _isTestingMqtt) return;
+    // Ẩn bàn phím
+    FocusScope.of(context).unfocus();
+
     print("🔵 [MQTT TEST] Starting test...");
-    setState(() => _isTestingMqtt = true);
+    _safeSetState(() {
+      _isTestingMqtt = true;
+      _mqttStatus = 'ĐANG TEST...';
+    });
 
     try {
-      // ✅ Lấy data trực tiếp từ form controllers
       final broker = _mqttBrokerController.text.trim();
       final portText = _mqttPortController.text.trim();
       final username = _mqttUsernameController.text.trim();
       final password = _mqttPasswordController.text.trim();
 
-      print("🔵 [MQTT TEST] Data from form:");
-      print("   Broker: '$broker'");
-      print("   Port: '$portText'");
-      print("   Username: '${username.isEmpty ? 'empty' : username}'");
-
-      // Validate trước khi test
-      if (broker.isEmpty) {
-        throw Exception('MQTT Broker không được để trống');
+      if (broker.isEmpty || portText.isEmpty) {
+        throw Exception('Chưa nhập IP/Port của MQTT Broker');
       }
 
-      final port = int.tryParse(portText);
-      if (port == null || port < 1 || port > 65535) {
-        throw Exception('Port MQTT không hợp lệ: $portText');
-      }
+      final port = _parsePort(portText, 'MQTT Port');
 
-      // ✅ Test với data từ form (KHÔNG dùng ConfigService)
-      print("🔵 [MQTT TEST] Testing connection...");
       final testResult = await MqttService.testConnection(
         broker: broker,
         port: port,
         username: username.isEmpty ? null : username,
         password: password.isEmpty ? null : password,
-        timeoutSeconds: 10,
+        timeoutSeconds: 5,
       );
 
-      print("🔵 [MQTT TEST] Result: $testResult");
+      if (!_canUseContext) return;
 
-      setState(() {
-        _mqttStatus = testResult ? 'OK' : 'ERROR';
-        _isTestingMqtt = false;
+      _safeSetState(() {
+        _mqttStatus = testResult ? 'OK' : 'LỖI';
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  testResult ? Icons.check_circle : Icons.error,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Text(testResult
-                    ? '✅ MQTT kết nối thành công!'
-                    : '❌ MQTT kết nối thất bại'),
-              ],
-            ),
-            backgroundColor: testResult ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
+      _showSnackBar(
+        testResult ? '✅ MQTT kết nối thành công!' : '❌ MQTT kết nối thất bại!',
+        testResult ? Colors.green : Colors.red,
+      );
+
+    } catch (e) {
       print("❌ [MQTT TEST ERROR] $e");
-      print("📍 [MQTT TEST STACK] $stackTrace");
-
-      setState(() {
-        _mqttStatus = 'ERROR';
-        _isTestingMqtt = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Lỗi MQTT: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      if (_canUseContext) {
+        _safeSetState(() => _mqttStatus = 'LỖI');
+        _showSnackBar('❌ Lỗi MQTT: ${e.toString().replaceFirst("Exception: ", "")}', Colors.red);
+      }
+    } finally {
+      if (_canUseContext) {
+        _safeSetState(() => _isTestingMqtt = false);
       }
     }
   }
 
   Future<void> _testPrinterConnection() async {
+    if (!_canUseContext || _isTestingPrinter) return;
+    FocusScope.of(context).unfocus();
+
     print("🟢 [PRINTER TEST] Starting test...");
-    setState(() => _isTestingPrinter = true);
+    _safeSetState(() {
+      _isTestingPrinter = true;
+      _printerStatus = 'ĐANG TEST...';
+    });
 
     try {
-      // ✅ Lấy data trực tiếp từ form controllers
       final printerIP = _printerIPController.text.trim();
       final portText = _printerPortController.text.trim();
 
-      print("🟢 [PRINTER TEST] Data from form:");
-      print("   IP: '$printerIP'");
-      print("   Port: '$portText'");
-
-      // Validate trước khi test
-      if (printerIP.isEmpty) {
-        throw Exception('IP máy in không được để trống');
+      if (printerIP.isEmpty || portText.isEmpty) {
+        throw Exception('Chưa nhập IP/Port của máy in');
       }
-
-      // Validate IP format
       if (!_isValidIPAddress(printerIP)) {
-        throw Exception('Địa chỉ IP không hợp lệ: $printerIP');
+        throw Exception('Địa chỉ IP không hợp lệ');
       }
 
-      final port = int.tryParse(portText);
-      if (port == null || port < 1 || port > 65535) {
-        throw Exception('Port máy in không hợp lệ: $portText');
-      }
+      final port = _parsePort(portText, 'Printer Port');
 
-      // ✅ Test với data từ form (KHÔNG dùng ConfigService)
-      print("🟢 [PRINTER TEST] Testing connection...");
       final testResult = await PrinterService.testConnection(
         printerIP,
         port,
         timeoutSeconds: 5,
       );
 
-      print("🟢 [PRINTER TEST] Result: $testResult");
+      if (!_canUseContext) return;
 
-      setState(() {
-        _printerStatus = testResult ? 'OK' : 'ERROR';
-        _isTestingPrinter = false;
+      _safeSetState(() {
+        _printerStatus = testResult ? 'OK' : 'LỖI';
       });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(
-                  testResult ? Icons.check_circle : Icons.error,
-                  color: Colors.white,
-                ),
-                const SizedBox(width: 8),
-                Text(testResult
-                    ? '✅ Máy in kết nối thành công!'
-                    : '❌ Máy in kết nối thất bại'),
-              ],
-            ),
-            backgroundColor: testResult ? Colors.green : Colors.red,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-    } catch (e, stackTrace) {
+      _showSnackBar(
+        testResult ? '✅ Máy in kết nối thành công!' : '❌ Máy in kết nối thất bại!',
+        testResult ? Colors.green : Colors.red,
+      );
+
+    } catch (e) {
       print("❌ [PRINTER TEST ERROR] $e");
-      print("📍 [PRINTER TEST STACK] $stackTrace");
-
-      setState(() {
-        _printerStatus = 'ERROR';
-        _isTestingPrinter = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Lỗi máy in: $e'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
-        );
+      if (_canUseContext) {
+        _safeSetState(() => _printerStatus = 'LỖI');
+        _showSnackBar('❌ Lỗi máy in: ${e.toString().replaceFirst("Exception: ", "")}', Colors.red);
+      }
+    } finally {
+      if (_canUseContext) {
+        _safeSetState(() => _isTestingPrinter = false);
       }
     }
-  }
-
-  // Helper method để validate IP
-  bool _isValidIPAddress(String ip) {
-    print("🔍 [VALIDATION] Checking IP: $ip");
-
-    if (ip.isEmpty) return false;
-
-    final parts = ip.split('.');
-    if (parts.length != 4) {
-      print("❌ [VALIDATION] IP must have 4 parts, got ${parts.length}");
-      return false;
-    }
-
-    for (int i = 0; i < parts.length; i++) {
-      final part = parts[i];
-      final num = int.tryParse(part);
-
-      if (num == null) {
-        print("❌ [VALIDATION] Part $i '$part' is not a number");
-        return false;
-      }
-
-      if (num < 0 || num > 255) {
-        print("❌ [VALIDATION] Part $i '$part' out of range (0-255)");
-        return false;
-      }
-    }
-
-    print("✅ [VALIDATION] IP format OK");
-    return true;
   }
 
   Future<void> _saveAndContinue() async {
-    print("💾 [SETUP] Starting save configuration...");
-
-    // ✅ Check null trước khi dùng !
-    if (_formKey.currentState == null) {
-      print("❌ [SETUP] Form key is null");
+    if (_isSaving || !_canUseContext) {
+      print("⚠️ [SETUP] Save already in progress or widget disposed");
       return;
     }
 
-    if (!_formKey.currentState!.validate()) {
+    // Ẩn bàn phím trước khi validate
+    FocusScope.of(context).unfocus();
+
+    final formState = _formKey.currentState;
+    if (formState == null) {
+      print("❌ [SETUP] Form state is null, cannot proceed.");
+      _showSnackBar('Form chưa sẵn sàng, vui lòng thử lại', Colors.red);
+      return;
+    }
+
+    if (!formState.validate()) {
       print("❌ [SETUP] Form validation failed");
+      _showSnackBar('Vui lòng điền đúng và đủ thông tin bắt buộc (*)', Colors.red);
       return;
     }
 
-    // ✅ Check mounted trước khi setState
-    if (!mounted) {
-      print("❌ [SETUP] Widget not mounted");
-      return;
-    }
-
-    setState(() => _isSaving = true);
+    print("💾 [SETUP] Starting save configuration...");
+    _safeSetState(() => _isSaving = true);
 
     try {
-      // ✅ Save form data trước
-      _formKey.currentState!.save();
-
-      print("📝 [SETUP] Creating config object...");
-
-      // ✅ Parse port với error handling
-      int mqttPort;
-      int printerPort;
-      int startNumber;
-
-      try {
-        mqttPort = int.parse(_mqttPortController.text.trim());
-      } catch (e) {
-        throw Exception('MQTT Port không hợp lệ: ${_mqttPortController.text}');
-      }
-
-      try {
-        printerPort = int.parse(_printerPortController.text.trim());
-      } catch (e) {
-        throw Exception('Printer Port không hợp lệ: ${_printerPortController.text}');
-      }
-
-      try {
-        startNumber = int.parse(_startNumberController.text.trim());
-      } catch (e) {
-        throw Exception('Số bắt đầu không hợp lệ: ${_startNumberController.text}');
-      }
+      formState.save();
+      print("📝 [SETUP] Form data saved");
 
       final config = DeviceConfig(
         deviceType: AppConstants.deviceType,
         storeId: _storeIdController.text.trim().toUpperCase(),
         deviceName: _deviceNameController.text.trim(),
         mqttBroker: _mqttBrokerController.text.trim(),
-        mqttPort: mqttPort,
+        mqttPort: _parsePort(_mqttPortController.text.trim(), 'MQTT Port'),
         mqttUsername: _mqttUsernameController.text.trim(),
         mqttPassword: _mqttPasswordController.text.trim(),
         printerIP: _printerIPController.text.trim(),
-        printerPort: printerPort,
+        printerPort: _parsePort(_printerPortController.text.trim(), 'Printer Port'),
         printerType: _printerType,
         queuePrefix: _queuePrefixController.text.trim().toUpperCase(),
-        startNumber: startNumber,
+        startNumber: _parseStartNumber(_startNumberController.text.trim()),
         resetTime: _resetTimeController.text.trim(),
       );
 
       print("✅ [SETUP] Config created: ${config.storeId}");
-      print("🔍 [SETUP] Config valid: ${config.isValid}");
 
       if (!config.isValid) {
-        final errors = config.validationErrors;
-        print("❌ [SETUP] Config validation errors: $errors");
-        throw Exception("Cấu hình không hợp lệ:\n${errors.join('\n')}");
+        throw Exception("Cấu hình không hợp lệ:\n${config.validationErrors.join('\n')}");
       }
 
-      // ✅ Check context và mounted trước khi dùng
-      if (!mounted) {
-        print("❌ [SETUP] Widget unmounted before save");
-        return;
-      }
-
-      print("💾 [SETUP] Saving to ConfigService...");
-
-      // ✅ Safe way to get ConfigService
-      ConfigService? configService;
-      try {
-        configService = context.read<ConfigService>();
-      } catch (e) {
-        print("❌ [SETUP] Cannot get ConfigService: $e");
-        throw Exception('Không thể truy cập ConfigService');
-      }
-
-      if (configService == null) {
-        throw Exception('ConfigService is null');
-      }
-
+      final configService = context.read<ConfigService>();
       final saved = await configService.saveConfig(config);
-      print("✅ [SETUP] Save result: $saved");
 
-      if (!mounted) {
-        print("❌ [SETUP] Widget unmounted after save");
+      if (!_canUseContext) {
+        print("❌ [SETUP] Widget disposed after save");
         return;
       }
 
       if (saved) {
-        setState(() {
-          _configStatus = 'ĐÃ LƯU';
-          _isSaving = false;
-        });
-
-        print("🧭 [SETUP] Showing success message...");
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Cấu hình đã được lưu thành công!'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-
-        // Đợi một chút để user thấy success message
+        _safeSetState(() => _configStatus = 'ĐÃ LƯU');
+        _showSnackBar('✅ Cấu hình đã được lưu thành công!', Colors.green);
         await Future.delayed(const Duration(seconds: 1));
 
-        if (mounted) {
+        if (_canUseContext) {
           print("🧭 [SETUP] Navigating to main screen...");
           Navigator.of(context).pushReplacementNamed('/main');
         }
       } else {
-        throw Exception('Lưu cấu hình thất bại');
+        throw Exception('Lưu cấu hình thất bại.');
       }
+
     } catch (e, stackTrace) {
       print("❌ [SETUP ERROR] $e");
       print("📍 [SETUP STACK] $stackTrace");
-
-      if (mounted) {
-        setState(() => _isSaving = false);
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('❌ Lỗi lưu cấu hình:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(e.toString()),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 8),
-            action: SnackBarAction(
-              label: 'ĐÓNG',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
-            ),
-          ),
-        );
+      if (_canUseContext) {
+        _showSnackBar('❌ Lỗi: ${e.toString().replaceFirst("Exception: ", "")}', Colors.red);
+      }
+    } finally {
+      if (_canUseContext) {
+        _safeSetState(() => _isSaving = false);
       }
     }
   }
 
+  // HELPER METHODS
+
+  int _parsePort(String value, String fieldName) {
+    final port = int.tryParse(value);
+    if (port == null || port < 1 || port > 65535) {
+      throw Exception('$fieldName không hợp lệ: $value');
+    }
+    return port;
+  }
+
+  int _parseStartNumber(String value) {
+    final number = int.tryParse(value);
+    if (number == null || number < 1) {
+      throw Exception('Số bắt đầu không hợp lệ: $value');
+    }
+    return number;
+  }
+
+  bool _isValidIPAddress(String ip) {
+    // Regex đơn giản để check định dạng IP. Có thể dùng thư viện nếu cần check kỹ hơn.
+    final ipRegex = RegExp(
+        r"^(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)\.(25[0-5]|2[0-4][0-9]|[0-1]?[0-9][0-9]?)$");
+    return ipRegex.hasMatch(ip);
+  }
+
+  void _showSnackBar(String message, Color backgroundColor) {
+    if (!_canUseContext) return;
+
+    try {
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: backgroundColor,
+          duration: const Duration(seconds: 3),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (e) {
+      print("❌ [SETUP] Error showing snackbar: $e");
+    }
+  }
+
   void _showHelpDialog() {
+    if (!_canUseContext) return;
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Trợ giúp cấu hình'),
-        content: const Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('🏪 Store ID: Mã định danh duy nhất cho cửa hàng'),
-            SizedBox(height: 8),
-            Text('📱 Device Name: Tên hiển thị của thiết bị này'),
-            SizedBox(height: 8),
-            Text('🌐 MQTT Broker: Máy chủ trung gian để liên lạc giữa các thiết bị'),
-            SizedBox(height: 8),
-            Text('🖨️ Printer IP: Địa chỉ mạng của máy in'),
-            SizedBox(height: 8),
-            Text('🔤 Queue Prefix: Chữ cái đầu của số thứ tự (A001, B001...)'),
-          ],
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('🏪 Store ID:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Mã định danh duy nhất cho cửa hàng, phải giống nhau trên tất cả thiết bị.'),
+              SizedBox(height: 8),
+              Text('🌐 MQTT Broker:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Máy chủ trung gian để liên lạc giữa các thiết bị.'),
+              SizedBox(height: 8),
+              Text('🖨️ Printer IP:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Địa chỉ mạng của máy in trong mạng nội bộ.'),
+              SizedBox(height: 8),
+              Text('🔤 Queue Prefix:', style: TextStyle(fontWeight: FontWeight.bold)),
+              Text('Chữ cái đứng đầu của số thứ tự (A001, B001...).'),
+            ],
+          ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('Đóng'),
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Đã hiểu'),
           ),
         ],
       ),
