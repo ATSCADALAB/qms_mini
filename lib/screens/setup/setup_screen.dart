@@ -5,6 +5,8 @@ import 'package:provider/provider.dart';
 
 import '../../models/device_config.dart';
 import '../../services/config_service.dart';
+import '../../services/mqtt_service.dart';
+import '../../services/printer_service.dart';
 import '../../utils/constants.dart';
 import '../../utils/validation_rules.dart';
 import '../../widgets/status_indicator.dart';
@@ -48,50 +50,63 @@ class _SetupScreenState extends State<SetupScreen> {
   @override
   void initState() {
     super.initState();
+    // ✅ Bỏ setup animations và clock stream
     _loadExistingConfig();
+    print("🔧 [SETUP] Setup screen initialized");
   }
 
   @override
   void dispose() {
+    print("🧹 [SETUP] Disposing setup screen...");
     _pageController.dispose();
     _disposeControllers();
     super.dispose();
   }
 
   void _disposeControllers() {
-    _storeIdController.dispose();
-    _deviceNameController.dispose();
-    _mqttBrokerController.dispose();
-    _mqttPortController.dispose();
-    _mqttUsernameController.dispose();
-    _mqttPasswordController.dispose();
-    _printerIPController.dispose();
-    _printerPortController.dispose();
-    _queuePrefixController.dispose();
-    _startNumberController.dispose();
-    _resetTimeController.dispose();
+    try {
+      _storeIdController.dispose();
+      _deviceNameController.dispose();
+      _mqttBrokerController.dispose();
+      _mqttPortController.dispose();
+      _mqttUsernameController.dispose();
+      _mqttPasswordController.dispose();
+      _printerIPController.dispose();
+      _printerPortController.dispose();
+      _queuePrefixController.dispose();
+      _startNumberController.dispose();
+      _resetTimeController.dispose();
+      print("✅ [SETUP] Controllers disposed");
+    } catch (e) {
+      print("⚠️ [SETUP] Error disposing controllers: $e");
+    }
   }
 
   Future<void> _loadExistingConfig() async {
-    final configService = context.read<ConfigService>();
-    final config = configService.config;
+    try {
+      final configService = context.read<ConfigService>();
+      final config = configService.config;
 
-    if (config != null) {
-      setState(() {
-        _storeIdController.text = config.storeId;
-        _deviceNameController.text = config.deviceName;
-        _mqttBrokerController.text = config.mqttBroker;
-        _mqttPortController.text = config.mqttPort.toString();
-        _mqttUsernameController.text = config.mqttUsername;
-        _mqttPasswordController.text = config.mqttPassword;
-        _printerIPController.text = config.printerIP;
-        _printerPortController.text = config.printerPort.toString();
-        _queuePrefixController.text = config.queuePrefix;
-        _startNumberController.text = config.startNumber.toString();
-        _resetTimeController.text = config.resetTime;
-        _printerType = config.printerType;
-        _configStatus = 'ĐÃ LƯU';
-      });
+      if (config != null) {
+        setState(() {
+          _storeIdController.text = config.storeId;
+          _deviceNameController.text = config.deviceName;
+          _mqttBrokerController.text = config.mqttBroker;
+          _mqttPortController.text = config.mqttPort.toString();
+          _mqttUsernameController.text = config.mqttUsername;
+          _mqttPasswordController.text = config.mqttPassword;
+          _printerIPController.text = config.printerIP;
+          _printerPortController.text = config.printerPort.toString();
+          _queuePrefixController.text = config.queuePrefix;
+          _startNumberController.text = config.startNumber.toString();
+          _resetTimeController.text = config.resetTime;
+          _printerType = config.printerType;
+          _configStatus = 'ĐÃ LƯU';
+        });
+        print("✅ [SETUP] Existing config loaded");
+      }
+    } catch (e) {
+      print("⚠️ [SETUP] Error loading existing config: $e");
     }
   }
 
@@ -256,7 +271,8 @@ class _SetupScreenState extends State<SetupScreen> {
                     helperText: 'Tên hiển thị của thiết bị này',
                   ),
                   validator: (value) {
-                    if (value != null && value.length > ValidationRules.maxDeviceNameLength) {
+                    if (value != null &&
+                        value.length > ValidationRules.maxDeviceNameLength) {
                       return 'Tên thiết bị không được quá ${ValidationRules.maxDeviceNameLength} ký tự';
                     }
                     return null;
@@ -326,7 +342,8 @@ class _SetupScreenState extends State<SetupScreen> {
                           helperText: 'Giờ reset hàng ngày',
                         ),
                         validator: (value) {
-                          if (value?.isNotEmpty == true && !ValidationRules.isValidTime(value!)) {
+                          if (value?.isNotEmpty == true &&
+                              !ValidationRules.isValidTime(value!)) {
                             return ErrorMessages.invalidResetTime;
                           }
                           return null;
@@ -439,8 +456,10 @@ class _SetupScreenState extends State<SetupScreen> {
                 ),
                 value: _printerType,
                 items: const [
-                  DropdownMenuItem(value: 'thermal', child: Text('Thermal (80mm)')),
-                  DropdownMenuItem(value: 'laser', child: Text('Laser/Inkjet')),
+                  DropdownMenuItem(
+                      value: 'thermal', child: Text('Thermal (80mm)')),
+                  DropdownMenuItem(
+                      value: 'laser', child: Text('Laser/Inkjet')),
                   DropdownMenuItem(value: 'pos', child: Text('POS Printer')),
                 ],
                 onChanged: (value) => setState(() => _printerType = value!),
@@ -598,7 +617,8 @@ class _SetupScreenState extends State<SetupScreen> {
           SizedBox(height: 8.h),
           const Text('• Store ID phải giống với Tablet 2 và TV Display'),
           const Text('• Prefix số sẽ hiển thị trước số thứ tự (A001, B001, ...)'),
-          const Text('• Reset time là giờ reset số về 1 hàng ngày (mặc định 00:00)'),
+          const Text(
+              '• Reset time là giờ reset số về 1 hàng ngày (mặc định 00:00)'),
           const Text('• Tất cả thiết bị phải cùng mạng WiFi'),
         ],
       ),
@@ -620,9 +640,12 @@ class _SetupScreenState extends State<SetupScreen> {
               ),
             ),
             SizedBox(height: 16.h),
-            StatusIndicator(label: 'MQTT Broker', status: _mqttStatus, icon: Icons.wifi),
-            StatusIndicator(label: 'Máy in', status: _printerStatus, icon: Icons.print),
-            StatusIndicator(label: 'Cấu hình', status: _configStatus, icon: Icons.settings),
+            StatusIndicator(
+                label: 'MQTT Broker', status: _mqttStatus, icon: Icons.wifi),
+            StatusIndicator(
+                label: 'Máy in', status: _printerStatus, icon: Icons.print),
+            StatusIndicator(
+                label: 'Cấu hình', status: _configStatus, icon: Icons.settings),
           ],
         ),
       ),
@@ -635,10 +658,15 @@ class _SetupScreenState extends State<SetupScreen> {
       items: {
         'Store ID:': _storeIdController.text,
         'Device:': _deviceNameController.text,
-        'MQTT:': '${_mqttBrokerController.text}:${_mqttPortController.text}',
-        'Printer:': '${_printerIPController.text}:${_printerPortController.text}',
-        'Queue:': '${_queuePrefixController.text} từ số ${_startNumberController.text}',
-        'Reset:': _resetTimeController.text.isEmpty ? 'Không reset' : _resetTimeController.text,
+        'MQTT:':
+        '${_mqttBrokerController.text}:${_mqttPortController.text}',
+        'Printer:':
+        '${_printerIPController.text}:${_printerPortController.text}',
+        'Queue:':
+        '${_queuePrefixController.text} từ số ${_startNumberController.text}',
+        'Reset:': _resetTimeController.text.isEmpty
+            ? 'Không reset'
+            : _resetTimeController.text,
       },
     );
   }
@@ -682,7 +710,12 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   void _nextPage() {
-    if (_currentPage == 0 && !_formKey.currentState!.validate()) return;
+    // ✅ Safe null check
+    if (_currentPage == 0) {
+      if (_formKey.currentState == null || !_formKey.currentState!.validate()) {
+        return;
+      }
+    }
 
     _pageController.nextPage(
       duration: AppConstants.animationDuration,
@@ -698,14 +731,42 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _testMqttConnection() async {
+    print("🔵 [MQTT TEST] Starting test...");
     setState(() => _isTestingMqtt = true);
 
     try {
-      // Simulate MQTT test - replace with actual implementation
-      await Future.delayed(const Duration(seconds: 2));
+      // ✅ Lấy data trực tiếp từ form controllers
+      final broker = _mqttBrokerController.text.trim();
+      final portText = _mqttPortController.text.trim();
+      final username = _mqttUsernameController.text.trim();
+      final password = _mqttPasswordController.text.trim();
 
-      final configService = context.read<ConfigService>();
-      final testResult = await configService.testMqttConnection();
+      print("🔵 [MQTT TEST] Data from form:");
+      print("   Broker: '$broker'");
+      print("   Port: '$portText'");
+      print("   Username: '${username.isEmpty ? 'empty' : username}'");
+
+      // Validate trước khi test
+      if (broker.isEmpty) {
+        throw Exception('MQTT Broker không được để trống');
+      }
+
+      final port = int.tryParse(portText);
+      if (port == null || port < 1 || port > 65535) {
+        throw Exception('Port MQTT không hợp lệ: $portText');
+      }
+
+      // ✅ Test với data từ form (KHÔNG dùng ConfigService)
+      print("🔵 [MQTT TEST] Testing connection...");
+      final testResult = await MqttService.testConnection(
+        broker: broker,
+        port: port,
+        username: username.isEmpty ? null : username,
+        password: password.isEmpty ? null : password,
+        timeoutSeconds: 10,
+      );
+
+      print("🔵 [MQTT TEST] Result: $testResult");
 
       setState(() {
         _mqttStatus = testResult ? 'OK' : 'ERROR';
@@ -715,14 +776,27 @@ class _SetupScreenState extends State<SetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(testResult
-                ? SuccessMessages.mqttConnected
-                : ErrorMessages.mqttConnectionFailed),
+            content: Row(
+              children: [
+                Icon(
+                  testResult ? Icons.check_circle : Icons.error,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                Text(testResult
+                    ? '✅ MQTT kết nối thành công!'
+                    : '❌ MQTT kết nối thất bại'),
+              ],
+            ),
             backgroundColor: testResult ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print("❌ [MQTT TEST ERROR] $e");
+      print("📍 [MQTT TEST STACK] $stackTrace");
+
       setState(() {
         _mqttStatus = 'ERROR';
         _isTestingMqtt = false;
@@ -731,8 +805,9 @@ class _SetupScreenState extends State<SetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${ErrorMessages.mqttConnectionFailed}: $e'),
+            content: Text('❌ Lỗi MQTT: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -740,14 +815,42 @@ class _SetupScreenState extends State<SetupScreen> {
   }
 
   Future<void> _testPrinterConnection() async {
+    print("🟢 [PRINTER TEST] Starting test...");
     setState(() => _isTestingPrinter = true);
 
     try {
-      // Simulate printer test - replace with actual implementation
-      await Future.delayed(const Duration(seconds: 2));
+      // ✅ Lấy data trực tiếp từ form controllers
+      final printerIP = _printerIPController.text.trim();
+      final portText = _printerPortController.text.trim();
 
-      final configService = context.read<ConfigService>();
-      final testResult = await configService.testPrinterConnection();
+      print("🟢 [PRINTER TEST] Data from form:");
+      print("   IP: '$printerIP'");
+      print("   Port: '$portText'");
+
+      // Validate trước khi test
+      if (printerIP.isEmpty) {
+        throw Exception('IP máy in không được để trống');
+      }
+
+      // Validate IP format
+      if (!_isValidIPAddress(printerIP)) {
+        throw Exception('Địa chỉ IP không hợp lệ: $printerIP');
+      }
+
+      final port = int.tryParse(portText);
+      if (port == null || port < 1 || port > 65535) {
+        throw Exception('Port máy in không hợp lệ: $portText');
+      }
+
+      // ✅ Test với data từ form (KHÔNG dùng ConfigService)
+      print("🟢 [PRINTER TEST] Testing connection...");
+      final testResult = await PrinterService.testConnection(
+        printerIP,
+        port,
+        timeoutSeconds: 5,
+      );
+
+      print("🟢 [PRINTER TEST] Result: $testResult");
 
       setState(() {
         _printerStatus = testResult ? 'OK' : 'ERROR';
@@ -757,14 +860,27 @@ class _SetupScreenState extends State<SetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(testResult
-                ? SuccessMessages.printerConnected
-                : ErrorMessages.printerConnectionFailed),
+            content: Row(
+              children: [
+                Icon(
+                  testResult ? Icons.check_circle : Icons.error,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 8),
+                Text(testResult
+                    ? '✅ Máy in kết nối thành công!'
+                    : '❌ Máy in kết nối thất bại'),
+              ],
+            ),
             backgroundColor: testResult ? Colors.green : Colors.red,
+            duration: const Duration(seconds: 3),
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      print("❌ [PRINTER TEST ERROR] $e");
+      print("📍 [PRINTER TEST STACK] $stackTrace");
+
       setState(() {
         _printerStatus = 'ERROR';
         _isTestingPrinter = false;
@@ -773,38 +889,150 @@ class _SetupScreenState extends State<SetupScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${ErrorMessages.printerConnectionFailed}: $e'),
+            content: Text('❌ Lỗi máy in: $e'),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
     }
   }
 
+  // Helper method để validate IP
+  bool _isValidIPAddress(String ip) {
+    print("🔍 [VALIDATION] Checking IP: $ip");
+
+    if (ip.isEmpty) return false;
+
+    final parts = ip.split('.');
+    if (parts.length != 4) {
+      print("❌ [VALIDATION] IP must have 4 parts, got ${parts.length}");
+      return false;
+    }
+
+    for (int i = 0; i < parts.length; i++) {
+      final part = parts[i];
+      final num = int.tryParse(part);
+
+      if (num == null) {
+        print("❌ [VALIDATION] Part $i '$part' is not a number");
+        return false;
+      }
+
+      if (num < 0 || num > 255) {
+        print("❌ [VALIDATION] Part $i '$part' out of range (0-255)");
+        return false;
+      }
+    }
+
+    print("✅ [VALIDATION] IP format OK");
+    return true;
+  }
+
   Future<void> _saveAndContinue() async {
-    if (!_formKey.currentState!.validate()) return;
+    print("💾 [SETUP] Starting save configuration...");
+
+    // ✅ Check null trước khi dùng !
+    if (_formKey.currentState == null) {
+      print("❌ [SETUP] Form key is null");
+      return;
+    }
+
+    if (!_formKey.currentState!.validate()) {
+      print("❌ [SETUP] Form validation failed");
+      return;
+    }
+
+    // ✅ Check mounted trước khi setState
+    if (!mounted) {
+      print("❌ [SETUP] Widget not mounted");
+      return;
+    }
 
     setState(() => _isSaving = true);
 
     try {
+      // ✅ Save form data trước
+      _formKey.currentState!.save();
+
+      print("📝 [SETUP] Creating config object...");
+
+      // ✅ Parse port với error handling
+      int mqttPort;
+      int printerPort;
+      int startNumber;
+
+      try {
+        mqttPort = int.parse(_mqttPortController.text.trim());
+      } catch (e) {
+        throw Exception('MQTT Port không hợp lệ: ${_mqttPortController.text}');
+      }
+
+      try {
+        printerPort = int.parse(_printerPortController.text.trim());
+      } catch (e) {
+        throw Exception('Printer Port không hợp lệ: ${_printerPortController.text}');
+      }
+
+      try {
+        startNumber = int.parse(_startNumberController.text.trim());
+      } catch (e) {
+        throw Exception('Số bắt đầu không hợp lệ: ${_startNumberController.text}');
+      }
+
       final config = DeviceConfig(
         deviceType: AppConstants.deviceType,
-        storeId: _storeIdController.text.toUpperCase(),
-        deviceName: _deviceNameController.text,
-        mqttBroker: _mqttBrokerController.text,
-        mqttPort: int.parse(_mqttPortController.text),
-        mqttUsername: _mqttUsernameController.text,
-        mqttPassword: _mqttPasswordController.text,
-        printerIP: _printerIPController.text,
-        printerPort: int.parse(_printerPortController.text),
+        storeId: _storeIdController.text.trim().toUpperCase(),
+        deviceName: _deviceNameController.text.trim(),
+        mqttBroker: _mqttBrokerController.text.trim(),
+        mqttPort: mqttPort,
+        mqttUsername: _mqttUsernameController.text.trim(),
+        mqttPassword: _mqttPasswordController.text.trim(),
+        printerIP: _printerIPController.text.trim(),
+        printerPort: printerPort,
         printerType: _printerType,
-        queuePrefix: _queuePrefixController.text.toUpperCase(),
-        startNumber: int.parse(_startNumberController.text),
-        resetTime: _resetTimeController.text,
+        queuePrefix: _queuePrefixController.text.trim().toUpperCase(),
+        startNumber: startNumber,
+        resetTime: _resetTimeController.text.trim(),
       );
 
-      final configService = context.read<ConfigService>();
+      print("✅ [SETUP] Config created: ${config.storeId}");
+      print("🔍 [SETUP] Config valid: ${config.isValid}");
+
+      if (!config.isValid) {
+        final errors = config.validationErrors;
+        print("❌ [SETUP] Config validation errors: $errors");
+        throw Exception("Cấu hình không hợp lệ:\n${errors.join('\n')}");
+      }
+
+      // ✅ Check context và mounted trước khi dùng
+      if (!mounted) {
+        print("❌ [SETUP] Widget unmounted before save");
+        return;
+      }
+
+      print("💾 [SETUP] Saving to ConfigService...");
+
+      // ✅ Safe way to get ConfigService
+      ConfigService? configService;
+      try {
+        configService = context.read<ConfigService>();
+      } catch (e) {
+        print("❌ [SETUP] Cannot get ConfigService: $e");
+        throw Exception('Không thể truy cập ConfigService');
+      }
+
+      if (configService == null) {
+        throw Exception('ConfigService is null');
+      }
+
       final saved = await configService.saveConfig(config);
+      print("✅ [SETUP] Save result: $saved");
+
+      if (!mounted) {
+        print("❌ [SETUP] Widget unmounted after save");
+        return;
+      }
 
       if (saved) {
         setState(() {
@@ -812,28 +1040,53 @@ class _SetupScreenState extends State<SetupScreen> {
           _isSaving = false;
         });
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(SuccessMessages.configSaved),
-              backgroundColor: Colors.green,
-            ),
-          );
+        print("🧭 [SETUP] Showing success message...");
 
-          // Navigate to main screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ Cấu hình đã được lưu thành công!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Đợi một chút để user thấy success message
+        await Future.delayed(const Duration(seconds: 1));
+
+        if (mounted) {
+          print("🧭 [SETUP] Navigating to main screen...");
           Navigator.of(context).pushReplacementNamed('/main');
         }
       } else {
-        throw Exception('Không thể lưu cấu hình');
+        throw Exception('Lưu cấu hình thất bại');
       }
-    } catch (e) {
-      setState(() => _isSaving = false);
+    } catch (e, stackTrace) {
+      print("❌ [SETUP ERROR] $e");
+      print("📍 [SETUP STACK] $stackTrace");
 
       if (mounted) {
+        setState(() => _isSaving = false);
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${ErrorMessages.saveConfigError}: $e'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('❌ Lỗi lưu cấu hình:',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(e.toString()),
+              ],
+            ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 8),
+            action: SnackBarAction(
+              label: 'ĐÓNG',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
           ),
         );
       }
@@ -845,10 +1098,10 @@ class _SetupScreenState extends State<SetupScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Trợ giúp cấu hình'),
-        content: Column(
+        content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text('🏪 Store ID: Mã định danh duy nhất cho cửa hàng'),
             SizedBox(height: 8),
             Text('📱 Device Name: Tên hiển thị của thiết bị này'),

@@ -2,9 +2,11 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tablet_print_station/services/printer_service.dart';
 import '../models/device_config.dart';
 import '../utils/constants.dart';
 import '../utils/validation_rules.dart';
+import 'mqtt_service.dart';
 
 class ConfigService extends ChangeNotifier {
   static final ConfigService _instance = ConfigService._internal();
@@ -249,34 +251,33 @@ class ConfigService extends ChangeNotifier {
 
   // Test MQTT connection settings
   Future<bool> testMqttConnection() async {
-    if (_config == null) return false;
+    print("🔵 [CONFIG SERVICE] Testing MQTT with saved config...");
 
-    try {
-      // TODO: Implement actual MQTT connection test
-      // For now, just validate the settings
-      return _config!.mqttBroker.isNotEmpty &&
-          _config!.mqttPort > 0 &&
-          _config!.mqttPort <= 65535;
-    } catch (e) {
-      debugPrint('MQTT connection test error: $e');
+    if (_config == null) {
+      print("❌ [CONFIG SERVICE] No saved config to test");
       return false;
     }
+
+    return await MqttService.testConnection(
+      broker: _config!.mqttBroker,
+      port: _config!.mqttPort,
+      username: _config!.mqttUsername.isEmpty ? null : _config!.mqttUsername,
+      password: _config!.mqttPassword.isEmpty ? null : _config!.mqttPassword,
+    );
   }
 
-  // Test printer connection settings
   Future<bool> testPrinterConnection() async {
-    if (_config == null) return false;
+    print("🟢 [CONFIG SERVICE] Testing printer with saved config...");
 
-    try {
-      // TODO: Implement actual printer connection test
-      // For now, just validate the IP format
-      return ValidationRules.isValidIP(_config!.printerIP) &&
-          _config!.printerPort > 0 &&
-          _config!.printerPort <= 65535;
-    } catch (e) {
-      debugPrint('Printer connection test error: $e');
+    if (_config == null) {
+      print("❌ [CONFIG SERVICE] No saved config to test");
       return false;
     }
+
+    return await PrinterService.testConnection(
+      _config!.printerIP,
+      _config!.printerPort,
+    );
   }
 
   // ========== HELPER METHODS ==========
