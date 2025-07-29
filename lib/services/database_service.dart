@@ -34,7 +34,7 @@ class DatabaseService {
     // Enable foreign keys
     await db.execute('PRAGMA foreign_keys = ON');
     // Enable WAL mode for better concurrency
-    await db.execute('PRAGMA journal_mode = WAL');
+    // await db.execute('PRAGMA journal_mode = WAL');
   }
 
   Future<void> _onCreate(Database db, int version) async {
